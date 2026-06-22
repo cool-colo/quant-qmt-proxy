@@ -21,6 +21,18 @@ ACCOUNT_TYPE_FROM_PROTO = {
 }
 ACCOUNT_TYPE_TO_PROTO = {value: key for key, value in ACCOUNT_TYPE_FROM_PROTO.items()}
 
+ORDER_LIFECYCLE_TO_PROTO = {
+    "UNSPECIFIED": common_pb2.ORDER_LIFECYCLE_STATUS_UNSPECIFIED,
+    "SUBMITTED": common_pb2.ORDER_LIFECYCLE_STATUS_SUBMITTED,
+    "ACCEPTED": common_pb2.ORDER_LIFECYCLE_STATUS_ACCEPTED,
+    "PARTIALLY_FILLED": common_pb2.ORDER_LIFECYCLE_STATUS_PARTIALLY_FILLED,
+    "FILLED": common_pb2.ORDER_LIFECYCLE_STATUS_FILLED,
+    "CANCELED": common_pb2.ORDER_LIFECYCLE_STATUS_CANCELED,
+    "CANCELLED": common_pb2.ORDER_LIFECYCLE_STATUS_CANCELED,
+    "REJECTED": common_pb2.ORDER_LIFECYCLE_STATUS_REJECTED,
+    "EXPIRED": common_pb2.ORDER_LIFECYCLE_STATUS_EXPIRED,
+}
+
 
 class TradingGrpcService(trading_pb2_grpc.TradingServiceServicer):
     def __init__(self, trading_manager: TradingSessionManager):
@@ -104,6 +116,7 @@ class TradingGrpcService(trading_pb2_grpc.TradingServiceServicer):
                     price=request.price,
                     strategy_name=request.strategy_name,
                     order_remark=request.order_remark,
+                    client_order_id=request.client_order_id,
                 )
             )
             return trading_pb2.SubmitStockOrderResponse(order=self._to_stock_order(order), status=self._status())
@@ -202,6 +215,11 @@ class TradingGrpcService(trading_pb2_grpc.TradingServiceServicer):
             direction=item.get("direction", ""),
             offset_flag=item.get("offset_flag", ""),
             secu_account=item.get("secu_account", ""),
+            client_order_id=item.get("client_order_id", ""),
+            lifecycle_status=ORDER_LIFECYCLE_TO_PROTO.get(
+                str(item.get("lifecycle_status", "UNSPECIFIED")).upper(),
+                common_pb2.ORDER_LIFECYCLE_STATUS_UNSPECIFIED,
+            ),
         )
 
     def _to_stock_trade(self, item: dict):
@@ -223,6 +241,7 @@ class TradingGrpcService(trading_pb2_grpc.TradingServiceServicer):
             offset_flag=item.get("offset_flag", ""),
             commission=item.get("commission", 0.0),
             secu_account=item.get("secu_account", ""),
+            client_order_id=item.get("client_order_id", ""),
         )
 
     def _to_account_status(self, item: dict):
@@ -240,6 +259,7 @@ class TradingGrpcService(trading_pb2_grpc.TradingServiceServicer):
             error_msg=item.get("error_msg", ""),
             strategy_name=item.get("strategy_name", ""),
             order_remark=item.get("order_remark", ""),
+            client_order_id=item.get("client_order_id", ""),
         )
 
     def _to_cancel_error(self, item: dict):
@@ -249,6 +269,7 @@ class TradingGrpcService(trading_pb2_grpc.TradingServiceServicer):
             order_sysid=item.get("order_sysid", ""),
             error_id=item.get("error_id", 0),
             error_msg=item.get("error_msg", ""),
+            client_order_id=item.get("client_order_id", ""),
         )
 
     def _to_trading_event(self, event: dict):

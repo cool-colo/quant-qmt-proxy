@@ -115,6 +115,8 @@ message StockOrder {
   string direction = 17;
   string offset_flag = 18;
   string secu_account = 19;
+  string client_order_id = 20;
+  qmt.common.OrderLifecycleStatus lifecycle_status = 21;
 }
 
 message GetStockOrdersResponse {
@@ -144,6 +146,7 @@ message StockTrade {
   string offset_flag = 15;
   double commission = 16;
   string secu_account = 17;
+  string client_order_id = 18;
 }
 
 message GetStockTradesResponse {
@@ -160,6 +163,7 @@ message SubmitStockOrderRequest {
   double price = 6;
   string strategy_name = 7;
   string order_remark = 8;
+  string client_order_id = 9;
 }
 
 message SubmitStockOrderResponse {
@@ -202,6 +206,7 @@ message OrderErrorEvent {
   string error_msg = 4;
   string strategy_name = 5;
   string order_remark = 6;
+  string client_order_id = 7;
 }
 
 message CancelErrorEvent {
@@ -210,6 +215,7 @@ message CancelErrorEvent {
   string order_sysid = 3;
   int32 error_id = 4;
   string error_msg = 5;
+  string client_order_id = 6;
 }
 
 message TradingEvent {

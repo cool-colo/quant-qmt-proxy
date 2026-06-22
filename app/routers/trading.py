@@ -135,6 +135,7 @@ async def submit_stock_order(
                 price=request.price,
                 strategy_name=request.strategy_name,
                 order_remark=request.order_remark,
+                client_order_id=request.client_order_id,
             )
         )
         return format_response(data=order, message="下单成功")

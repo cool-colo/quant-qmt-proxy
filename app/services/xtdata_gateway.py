@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.config import Settings, XTQuantMode
 from app.services.contracts import FinancialDataQuery, KlineHistoryQuery, L2Query, TickHistoryQuery, TradingCalendarQuery
@@ -57,6 +58,7 @@ TICK_FIELDS = [
 
 CONNECT_JOIN_TIMEOUT_SECONDS = 5.0
 CONNECT_RETRY_COOLDOWN_SECONDS = 5.0
+QMT_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 def normalize_scalar(value: Any) -> Any:
@@ -78,6 +80,8 @@ def to_epoch_ms(value: Any) -> int:
     if value in (None, ""):
         return int(time.time() * 1000)
     if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=QMT_TIMEZONE)
         return int(value.timestamp() * 1000)
     if isinstance(value, (int, float)):
         if value > 1_000_000_000_000:
@@ -87,7 +91,8 @@ def to_epoch_ms(value: Any) -> int:
     value_str = str(value)
     for fmt in ("%Y%m%d%H%M%S", "%Y%m%d"):
         try:
-            return int(datetime.strptime(value_str, fmt).timestamp() * 1000)
+            parsed = datetime.strptime(value_str, fmt).replace(tzinfo=QMT_TIMEZONE)
+            return int(parsed.timestamp() * 1000)
         except ValueError:
             continue
     return int(time.time() * 1000)
@@ -295,7 +300,7 @@ class XtDataGateway:
 
     def get_trading_calendar(self, query: TradingCalendarQuery) -> dict[str, Any]:
         if self._is_mock_mode():
-            base = datetime.strptime(query.start_time or "20250101", "%Y%m%d")
+            base = datetime.strptime(query.start_time or "20250101", "%Y%m%d").replace(tzinfo=QMT_TIMEZONE)
             return {
                 "market": query.market,
                 "dates": [(base + timedelta(days=offset)).strftime("%Y%m%d") for offset in range(5)],
@@ -511,7 +516,7 @@ class XtDataGateway:
         }
 
     def _mock_kline_history(self, query: KlineHistoryQuery) -> list[dict[str, Any]]:
-        base = datetime.strptime(query.start_time or "20250101", "%Y%m%d")
+        base = datetime.strptime(query.start_time or "20250101", "%Y%m%d").replace(tzinfo=QMT_TIMEZONE)
         items = []
         for symbol in query.symbols:
             if not validate_stock_code(symbol):

@@ -19,6 +19,7 @@ class SubmitStockOrderCommand:
     price: float = 0.0
     strategy_name: str = ""
     order_remark: str = ""
+    client_order_id: str = ""
 
 
 @dataclass(frozen=True)

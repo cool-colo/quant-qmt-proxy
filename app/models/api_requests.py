@@ -16,6 +16,7 @@ class SubmitStockOrderRequestModel(BaseModel):
     price: float = 0.0
     strategy_name: str = ""
     order_remark: str = ""
+    client_order_id: str = ""
 
     @field_validator("side")
     @classmethod

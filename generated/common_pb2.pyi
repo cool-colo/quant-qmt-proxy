@@ -51,6 +51,17 @@ class OrderSide(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     ORDER_SIDE_BUY: _ClassVar[OrderSide]
     ORDER_SIDE_SELL: _ClassVar[OrderSide]
 
+class OrderLifecycleStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    ORDER_LIFECYCLE_STATUS_UNSPECIFIED: _ClassVar[OrderLifecycleStatus]
+    ORDER_LIFECYCLE_STATUS_SUBMITTED: _ClassVar[OrderLifecycleStatus]
+    ORDER_LIFECYCLE_STATUS_ACCEPTED: _ClassVar[OrderLifecycleStatus]
+    ORDER_LIFECYCLE_STATUS_PARTIALLY_FILLED: _ClassVar[OrderLifecycleStatus]
+    ORDER_LIFECYCLE_STATUS_FILLED: _ClassVar[OrderLifecycleStatus]
+    ORDER_LIFECYCLE_STATUS_CANCELED: _ClassVar[OrderLifecycleStatus]
+    ORDER_LIFECYCLE_STATUS_REJECTED: _ClassVar[OrderLifecycleStatus]
+    ORDER_LIFECYCLE_STATUS_EXPIRED: _ClassVar[OrderLifecycleStatus]
+
 class StockPriceType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     STOCK_PRICE_TYPE_UNSPECIFIED: _ClassVar[StockPriceType]
@@ -95,6 +106,14 @@ SECURITY_ACCOUNT_TYPE_SHENGANGTONG: SecurityAccountType
 ORDER_SIDE_UNSPECIFIED: OrderSide
 ORDER_SIDE_BUY: OrderSide
 ORDER_SIDE_SELL: OrderSide
+ORDER_LIFECYCLE_STATUS_UNSPECIFIED: OrderLifecycleStatus
+ORDER_LIFECYCLE_STATUS_SUBMITTED: OrderLifecycleStatus
+ORDER_LIFECYCLE_STATUS_ACCEPTED: OrderLifecycleStatus
+ORDER_LIFECYCLE_STATUS_PARTIALLY_FILLED: OrderLifecycleStatus
+ORDER_LIFECYCLE_STATUS_FILLED: OrderLifecycleStatus
+ORDER_LIFECYCLE_STATUS_CANCELED: OrderLifecycleStatus
+ORDER_LIFECYCLE_STATUS_REJECTED: OrderLifecycleStatus
+ORDER_LIFECYCLE_STATUS_EXPIRED: OrderLifecycleStatus
 STOCK_PRICE_TYPE_UNSPECIFIED: StockPriceType
 STOCK_PRICE_TYPE_LATEST_PRICE: StockPriceType
 STOCK_PRICE_TYPE_FIX_PRICE: StockPriceType

@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Iterator
+from zoneinfo import ZoneInfo
 
 from app.config import AccountKind, Settings, XTQuantMode, XTQuantTradingAccountConfig
 from app.services.contracts import CancelStockOrderCommand, OpenSessionCommand, SubmitStockOrderCommand
@@ -14,6 +15,9 @@ from app.services.xttrader_gateway import XTQUANT_TRADER_AVAILABLE, XTTraderGate
 from app.utils.exceptions import TradingServiceException
 from app.utils.helpers import validate_stock_code
 from app.utils.logger import logger
+
+
+QMT_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 @dataclass
@@ -36,6 +40,7 @@ class TradingSession:
 
 
 class TradingSessionManager:
+    CLIENT_ORDER_REMARK_PREFIX = "NT:"
     CANCEL_MARKET_MAP = {
         "SH": 0,
         "SHA": 0,
@@ -216,6 +221,10 @@ class TradingSessionManager:
         if not session.gateway:
             raise TradingServiceException("session is not connected to xttrader", "TRADER_NOT_CONNECTED")
 
+        native_order_remark = self._encode_order_remark(
+            client_order_id=command.client_order_id,
+            order_remark=command.order_remark,
+        )
         order_id = session.gateway.order_stock(
             stock_code=command.stock_code,
             order_type=command.side,
@@ -223,7 +232,7 @@ class TradingSessionManager:
             price_type=command.price_type,
             price=float(command.price or 0.0),
             strategy_name=command.strategy_name,
-            order_remark=command.order_remark,
+            order_remark=native_order_remark,
         )
         order = {
             "account_id": session.account_id,
@@ -241,10 +250,17 @@ class TradingSessionManager:
             "order_status_code": 50,
             "status_msg": "submitted",
             "strategy_name": command.strategy_name,
-            "order_remark": command.order_remark,
+            "order_remark": native_order_remark,
             "direction": "",
             "offset_flag": "",
             "secu_account": session.account_id,
+            "client_order_id": command.client_order_id,
+            "lifecycle_status": self._infer_order_lifecycle_status(
+                raw_status_code=50,
+                status_msg="submitted",
+                order_volume=command.volume,
+                traded_volume=0,
+            ),
         }
         with self._lock:
             session.orders[order["order_id"]] = order
@@ -264,6 +280,7 @@ class TradingSessionManager:
                     if order:
                         order["order_status_code"] = 54
                         order["status_msg"] = "cancelled"
+                        order["lifecycle_status"] = "CANCELED"
                         self._publish_event(command.session_id, "order_update", order)
             logger.info(
                 f"cancelled mock order: session_id={command.session_id}, account_id={session.account_id}, order_id={command.order_id or ''}, order_sysid={command.order_sysid or ''}"
@@ -300,6 +317,7 @@ class TradingSessionManager:
                 if order:
                     order["order_status_code"] = 54
                     order["status_msg"] = "cancelled"
+                    order["lifecycle_status"] = "CANCELED"
                     self._publish_event(command.session_id, "order_update", order)
         logger.info(
             f"cancel order result: session_id={command.session_id}, account_id={session.account_id}, success={success}, order_id={command.order_id or ''}, order_sysid={command.order_sysid or ''}"
@@ -427,6 +445,10 @@ class TradingSessionManager:
         with self._lock:
             order_id = f"mock_{self._mock_order_counter}"
             self._mock_order_counter += 1
+        native_order_remark = self._encode_order_remark(
+            client_order_id=command.client_order_id,
+            order_remark=command.order_remark,
+        )
         order = {
             "account_id": session.account_id,
             "stock_code": command.stock_code,
@@ -443,10 +465,17 @@ class TradingSessionManager:
             "order_status_code": 50,
             "status_msg": "submitted",
             "strategy_name": command.strategy_name,
-            "order_remark": command.order_remark,
+            "order_remark": native_order_remark,
             "direction": "",
             "offset_flag": "",
             "secu_account": session.account_id,
+            "client_order_id": command.client_order_id,
+            "lifecycle_status": self._infer_order_lifecycle_status(
+                raw_status_code=50,
+                status_msg="submitted",
+                order_volume=command.volume,
+                traded_volume=0,
+            ),
         }
         with self._lock:
             session.orders[order_id] = order
@@ -472,6 +501,11 @@ class TradingSessionManager:
         }
 
     def _convert_order(self, order: Any) -> dict[str, Any]:
+        order_remark = str(getattr(order, "order_remark", ""))
+        raw_status_code = int(getattr(order, "order_status", 0) or 0)
+        order_volume = int(getattr(order, "order_volume", 0) or 0)
+        traded_volume = int(getattr(order, "traded_volume", 0) or 0)
+        status_msg = str(getattr(order, "status_msg", ""))
         return {
             "account_id": str(getattr(order, "account_id", "")),
             "stock_code": str(getattr(order, "stock_code", "")),
@@ -485,16 +519,25 @@ class TradingSessionManager:
             "price": float(getattr(order, "price", 0.0) or 0.0),
             "traded_volume": int(getattr(order, "traded_volume", 0) or 0),
             "traded_price": float(getattr(order, "traded_price", 0.0) or 0.0),
-            "order_status_code": int(getattr(order, "order_status", 0) or 0),
-            "status_msg": str(getattr(order, "status_msg", "")),
+            "order_status_code": raw_status_code,
+            "status_msg": status_msg,
             "strategy_name": str(getattr(order, "strategy_name", "")),
-            "order_remark": str(getattr(order, "order_remark", "")),
+            "order_remark": order_remark,
             "direction": str(getattr(order, "direction", "")),
             "offset_flag": str(getattr(order, "offset_flag", "")),
             "secu_account": str(getattr(order, "secu_account", "")),
+            "client_order_id": str(getattr(order, "client_order_id", ""))
+            or self._extract_client_order_id(order_remark),
+            "lifecycle_status": self._infer_order_lifecycle_status(
+                raw_status_code=raw_status_code,
+                status_msg=status_msg,
+                order_volume=order_volume,
+                traded_volume=traded_volume,
+            ),
         }
 
     def _convert_trade(self, trade: Any) -> dict[str, Any]:
+        order_remark = str(getattr(trade, "order_remark", ""))
         return {
             "account_id": str(getattr(trade, "account_id", "")),
             "stock_code": str(getattr(trade, "stock_code", "")),
@@ -508,11 +551,13 @@ class TradingSessionManager:
             "order_id": str(getattr(trade, "order_id", "")),
             "order_sysid": str(getattr(trade, "order_sysid", "")),
             "strategy_name": str(getattr(trade, "strategy_name", "")),
-            "order_remark": str(getattr(trade, "order_remark", "")),
+            "order_remark": order_remark,
             "direction": str(getattr(trade, "direction", "")),
             "offset_flag": str(getattr(trade, "offset_flag", "")),
             "commission": float(getattr(trade, "commission", 0.0) or 0.0),
             "secu_account": str(getattr(trade, "secu_account", "")),
+            "client_order_id": str(getattr(trade, "client_order_id", ""))
+            or self._extract_client_order_id(order_remark),
         }
 
     def _convert_position(self, position: Any) -> dict[str, Any]:
@@ -577,6 +622,9 @@ class TradingSessionManager:
             with self._lock:
                 if not session.accept_events:
                     return
+                existing = session.orders.get(order["order_id"])
+                if existing and not order["client_order_id"]:
+                    order["client_order_id"] = existing.get("client_order_id", "")
                 session.orders[order["order_id"]] = order
             self._publish_event(session_id, "order_update", order)
             return
@@ -602,6 +650,8 @@ class TradingSessionManager:
                     "error_msg": str(getattr(payload, "error_msg", "")),
                     "strategy_name": str(getattr(payload, "strategy_name", "")),
                     "order_remark": str(getattr(payload, "order_remark", "")),
+                    "client_order_id": str(getattr(payload, "client_order_id", ""))
+                    or self._extract_client_order_id(str(getattr(payload, "order_remark", ""))),
                 },
             )
             return
@@ -615,6 +665,7 @@ class TradingSessionManager:
                     "order_sysid": str(getattr(payload, "order_sysid", "")),
                     "error_id": int(getattr(payload, "error_id", 0) or 0),
                     "error_msg": str(getattr(payload, "error_msg", "")),
+                    "client_order_id": str(getattr(payload, "client_order_id", "")),
                 },
             )
 
@@ -630,6 +681,8 @@ class TradingSessionManager:
 
     def _to_epoch_ms(self, value: Any) -> int:
         if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=QMT_TIMEZONE)
             return int(value.timestamp() * 1000)
         if value in (None, ""):
             return 0
@@ -642,7 +695,8 @@ class TradingSessionManager:
             if year < 2000 or year > 2100:
                 continue
             try:
-                return int(datetime.strptime(value_str, fmt).timestamp() * 1000)
+                parsed = datetime.strptime(value_str, fmt).replace(tzinfo=QMT_TIMEZONE)
+                return int(parsed.timestamp() * 1000)
             except (OSError, OverflowError, ValueError):
                 continue
         if not looks_like_calendar_value:
@@ -656,3 +710,44 @@ class TradingSessionManager:
                 pass
         logger.warning(f"unable to normalize xttrader time value: raw={value!r}")
         return 0
+
+    def _encode_order_remark(self, client_order_id: str, order_remark: str) -> str:
+        client_order_id = (client_order_id or "").strip()
+        order_remark = order_remark or ""
+        if not client_order_id:
+            return order_remark
+        if order_remark.startswith(self.CLIENT_ORDER_REMARK_PREFIX):
+            return order_remark
+        if not order_remark:
+            return f"{self.CLIENT_ORDER_REMARK_PREFIX}{client_order_id}"
+        return f"{self.CLIENT_ORDER_REMARK_PREFIX}{client_order_id}|{order_remark}"
+
+    def _extract_client_order_id(self, order_remark: str) -> str:
+        if not order_remark.startswith(self.CLIENT_ORDER_REMARK_PREFIX):
+            return ""
+        value = order_remark[len(self.CLIENT_ORDER_REMARK_PREFIX):]
+        return value.split("|", 1)[0].strip()
+
+    def _infer_order_lifecycle_status(
+        self,
+        raw_status_code: int,
+        status_msg: str,
+        order_volume: int,
+        traded_volume: int,
+    ) -> str:
+        normalized = (status_msg or "").strip().lower()
+        if "reject" in normalized or "废" in normalized or "拒" in normalized:
+            return "REJECTED"
+        if "cancel" in normalized or "撤" in normalized or raw_status_code == 54:
+            return "CANCELED"
+        if "expire" in normalized or "过期" in normalized:
+            return "EXPIRED"
+        if order_volume > 0 and traded_volume >= order_volume:
+            return "FILLED"
+        if traded_volume > 0:
+            return "PARTIALLY_FILLED"
+        if raw_status_code == 50 or "submit" in normalized or "报" in normalized:
+            return "SUBMITTED"
+        if raw_status_code:
+            return "ACCEPTED"
+        return "UNSPECIFIED"
