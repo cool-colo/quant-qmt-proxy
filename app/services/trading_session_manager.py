@@ -356,6 +356,11 @@ class TradingSessionManager:
         try:
             gateway.connect()
         except RuntimeError as exc:
+            logger.error(
+                f"failed to connect xttrader gateway: session_id={session_id}, account_id={account_id}, "
+                f"account_type={account_type}, qmt_userdata_path={self.settings.xtquant.data.qmt_userdata_path}, "
+                f"error={exc}"
+            )
             raise TradingServiceException(str(exc), "XTTRADER_UNAVAILABLE") from exc
         return gateway
 

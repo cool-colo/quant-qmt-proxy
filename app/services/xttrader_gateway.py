@@ -102,17 +102,35 @@ class XTTraderGateway:
         self.trader.register_callback(self.callback)
         self.trader.start()
         logger.info(
-            f"xttrader connecting: account_id={self.account_id}, account_type={self.account_type}, session={self.session}"
+            f"xttrader connecting: account_id={self.account_id}, account_type={self.account_type}, "
+            f"session={self.session}, qmt_userdata_path={self.qmt_userdata_path}"
         )
         result = self.trader.connect()
         if result != 0:
             self.disconnect()
-            raise RuntimeError(f"xttrader.connect() 返回 {result}")
+            logger.error(
+                f"xttrader.connect() 失败: return_code={result}, account_id={self.account_id}, "
+                f"account_type={self.account_type}, session={self.session}, "
+                f"qmt_userdata_path={self.qmt_userdata_path}; "
+                "通常表示 mini_QMT 终端未运行或未连接交易服务器，请检查终端登录与服务器连接状态"
+            )
+            raise RuntimeError(
+                f"xttrader.connect() 返回 {result}（mini_QMT 终端未运行或未连接交易服务器，"
+                f"qmt_userdata_path={self.qmt_userdata_path}）"
+            )
         self.account = StockAccount(self.account_id, self.account_type)
         subscribe_result = self.trader.subscribe(self.account)
         if subscribe_result != 0:
             self.disconnect()
-            raise RuntimeError(f"xttrader.subscribe() 返回 {subscribe_result}")
+            logger.error(
+                f"xttrader.subscribe() 失败: return_code={subscribe_result}, account_id={self.account_id}, "
+                f"account_type={self.account_type}, session={self.session}; "
+                "通常表示账号未登录该终端或账号类型不匹配"
+            )
+            raise RuntimeError(
+                f"xttrader.subscribe() 返回 {subscribe_result}"
+                f"（账号 {self.account_id} 未登录该终端或账号类型 {self.account_type} 不匹配）"
+            )
         self.connected = True
         logger.info(
             f"xttrader ready: account_id={self.account_id}, account_type={self.account_type}, session={self.session}"
