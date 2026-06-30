@@ -11,13 +11,47 @@ from zoneinfo import ZoneInfo
 from app.config import AccountKind, Settings, XTQuantMode, XTQuantTradingAccountConfig
 from app.services.contracts import CancelStockOrderCommand, OpenSessionCommand, SubmitStockOrderCommand
 from app.services.trading_event_hub import TradingEventHub
-from app.services.xttrader_gateway import XTQUANT_TRADER_AVAILABLE, XTTraderGateway
+from app.services.xttrader_gateway import XTQUANT_TRADER_AVAILABLE, XTTraderGateway, xtconstant
 from app.utils.exceptions import TradingServiceException
 from app.utils.helpers import validate_stock_code
 from app.utils.logger import logger
 
 
 QMT_TIMEZONE = ZoneInfo("Asia/Shanghai")
+
+
+def _build_order_status_lifecycle_map() -> dict[int, str]:
+    """
+    Map xtquant numeric ``order_status`` codes to proxy lifecycle strings.
+
+    Prefer the named ``xtconstant`` values when the package is importable; fall back
+    to the documented numeric codes (xtquant 250516) when it is not (CI/dev without
+    the QMT terminal, where xtconstant is ``None``). Keying off the authoritative
+    numeric status — rather than free-text ``status_msg`` — is what makes a 废单
+    (ORDER_JUNK) reliably terminal: its COUNTER error message (e.g. "可用资金不足")
+    contains none of the reject/废/拒 keywords, so a text-only inference would
+    mislabel it ACCEPTED and the order would look open forever.
+    """
+
+    def code(name: str, default: int) -> int:
+        value = getattr(xtconstant, name, None) if xtconstant is not None else None
+        return int(value) if value is not None else default
+
+    return {
+        code("ORDER_UNREPORTED", 48): "SUBMITTED",       # 未报
+        code("ORDER_WAIT_REPORTING", 49): "SUBMITTED",   # 待报
+        code("ORDER_REPORTED", 50): "ACCEPTED",          # 已报
+        code("ORDER_REPORTED_CANCEL", 51): "ACCEPTED",   # 已报待撤 (still live at venue)
+        code("ORDER_PARTSUCC_CANCEL", 52): "PARTIALLY_FILLED", # 部成待撤
+        code("ORDER_PART_CANCEL", 53): "CANCELED",       # 部撤 (terminal)
+        code("ORDER_CANCELED", 54): "CANCELED",          # 已撤 (terminal)
+        code("ORDER_PART_SUCC", 55): "PARTIALLY_FILLED", # 部成
+        code("ORDER_SUCCEEDED", 56): "FILLED",           # 已成 (terminal)
+        code("ORDER_JUNK", 57): "REJECTED",              # 废单 (terminal)
+    }
+
+
+ORDER_STATUS_LIFECYCLE_MAP = _build_order_status_lifecycle_map()
 
 
 @dataclass
@@ -740,10 +774,23 @@ class TradingSessionManager:
         order_volume: int,
         traded_volume: int,
     ) -> str:
+        code = int(raw_status_code or 0)
+        mapped = ORDER_STATUS_LIFECYCLE_MAP.get(code)
+        if mapped is not None:
+            # "已报" (ACCEPTED) may already carry a fill the venue reported in the same
+            # snapshot — promote it so a filled order is never left looking merely open.
+            if mapped == "ACCEPTED":
+                if order_volume > 0 and traded_volume >= order_volume:
+                    return "FILLED"
+                if traded_volume > 0:
+                    return "PARTIALLY_FILLED"
+            return mapped
+
+        # Unknown / 255 (ORDER_UNKNOWN) / 0: fall back to free-text and traded volumes.
         normalized = (status_msg or "").strip().lower()
         if "reject" in normalized or "废" in normalized or "拒" in normalized:
             return "REJECTED"
-        if "cancel" in normalized or "撤" in normalized or raw_status_code == 54:
+        if "cancel" in normalized or "撤" in normalized:
             return "CANCELED"
         if "expire" in normalized or "过期" in normalized:
             return "EXPIRED"
@@ -751,8 +798,8 @@ class TradingSessionManager:
             return "FILLED"
         if traded_volume > 0:
             return "PARTIALLY_FILLED"
-        if raw_status_code == 50 or "submit" in normalized or "报" in normalized:
+        if "submit" in normalized or "报" in normalized:
             return "SUBMITTED"
-        if raw_status_code:
+        if code:
             return "ACCEPTED"
         return "UNSPECIFIED"
