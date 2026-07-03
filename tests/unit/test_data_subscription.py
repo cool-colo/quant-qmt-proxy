@@ -1,14 +1,14 @@
 import threading
 import time
+
 from types import SimpleNamespace
 
 import pytest
 
 from app.config import Settings
-from app.services.contracts import QuoteSubscriptionSpec, WholeQuoteSubscriptionSpec
-from app.services.xtdata_gateway import to_epoch_ms
-from app.services.xtdata_gateway import XtDataGateway
 from app.services import xtdata_subscription_hub as subscription_hub_module
+from app.services.contracts import QuoteSubscriptionSpec, WholeQuoteSubscriptionSpec
+from app.services.xtdata_gateway import XtDataGateway, to_epoch_ms
 from app.services.xtdata_subscription_hub import XtDataSubscriptionHub
 from app.utils.exceptions import DataServiceException
 
@@ -122,6 +122,106 @@ def test_build_event_maps_kline_payload_time_to_time_ms():
     assert event["data"]["time_ms"] == to_epoch_ms("20250102103000")
     assert "time" not in event["data"]
     assert event["data"]["volume"] == 1200
+
+
+@pytest.mark.parametrize(
+    ("period", "payload_type", "expected_field"),
+    [
+        ("l2transaction", "l2transaction", "trade_index"),
+        ("l2order", "l2order", "entrust_no"),
+        ("l2quote", "l2quote", "last_price"),
+    ],
+)
+def test_l2_quote_subscription_streams_mock_events(period, payload_type, expected_field):
+    settings = build_mock_settings()
+    hub = XtDataSubscriptionHub(settings, XtDataGateway(settings))
+
+    subscription_id = hub.create_persistent_quote_subscription(
+        QuoteSubscriptionSpec(symbols=["000001.SZ"], period=period)
+    )
+
+    counter = {"count": 0}
+
+    def stop_checker() -> bool:
+        counter["count"] += 1
+        return counter["count"] <= 1
+
+    event = next(hub.stream_blocking(subscription_id, stop_checker=stop_checker))
+
+    assert event["symbol"] == "000001.SZ"
+    assert event["period"] == period
+    assert event["payload_type"] == payload_type
+    assert expected_field in event["data"]
+
+    hub.delete_subscription(subscription_id)
+
+
+def test_build_event_l2_transaction_uses_native_schema_without_kline_coercion():
+    settings = build_mock_settings()
+    hub = XtDataSubscriptionHub(settings, XtDataGateway(settings))
+
+    event = hub._build_event(
+        "000001.SZ",
+        "l2transaction",
+        {
+            "time": "20250102103000",
+            "price": 11.5,
+            "volume": 300,
+            "amount": 3450.0,
+            "tradeIndex": 42,
+            "buyNo": 100,
+            "sellNo": 200,
+            "tradeType": 1,
+            "tradeFlag": 2,
+        },
+    )
+
+    assert event["payload_type"] == "l2transaction"
+    data = event["data"]
+    assert data["time_ms"] == to_epoch_ms("20250102103000")
+    # Native L2 integer fields must survive as ints (not float-coerced by the kline path).
+    assert data["trade_index"] == 42
+    assert isinstance(data["trade_index"], int)
+    assert data["buy_no"] == 100
+    assert data["sell_no"] == 200
+    assert data["trade_type"] == 1
+    assert data["trade_flag"] == 2
+    assert data["price"] == 11.5
+
+
+def test_build_event_l2_order_uses_native_schema():
+    settings = build_mock_settings()
+    hub = XtDataSubscriptionHub(settings, XtDataGateway(settings))
+
+    event = hub._build_event(
+        "000001.SZ",
+        "l2order",
+        {
+            "time": "20250102103000",
+            "price": 9.9,
+            "volume": 500,
+            "entrustNo": 7,
+            "entrustType": 1,
+            "entrustDirection": 2,
+        },
+    )
+
+    assert event["payload_type"] == "l2order"
+    assert event["data"]["entrust_no"] == 7
+    assert event["data"]["entrust_direction"] == 2
+
+
+@pytest.mark.parametrize("period", ["l2transaction", "l2order", "l2quote"])
+def test_l2_subscription_rejects_full_history_replay(period):
+    settings = build_mock_settings()
+    hub = XtDataSubscriptionHub(settings, XtDataGateway(settings))
+
+    with pytest.raises(DataServiceException) as exc:
+        hub.create_persistent_quote_subscription(
+            QuoteSubscriptionSpec(symbols=["000001.SZ"], period=period, count=-1)
+        )
+
+    assert exc.value.error_code == "INVALID_SUBSCRIPTION_COUNT"
 
 
 def test_quote_subscription_rejects_tick_full_history_replay():
@@ -247,7 +347,9 @@ def test_subscription_queue_overflow_emits_warning(monkeypatch):
     consumer_id, consumer_queue = hub._register_consumer(subscription_id)
     warnings: list[str] = []
 
-    monkeypatch.setattr(subscription_hub_module.logger, "warning", lambda message: warnings.append(message))
+    monkeypatch.setattr(
+        subscription_hub_module.logger, "warning", lambda message: warnings.append(message)
+    )
 
     hub._fanout(subscription_id, {"seq": 1})
     hub._fanout(subscription_id, {"seq": 2})
@@ -268,10 +370,14 @@ def test_subscription_limit_is_enforced():
         }
     )
     hub = XtDataSubscriptionHub(settings, XtDataGateway(settings))
-    hub.create_persistent_quote_subscription(QuoteSubscriptionSpec(symbols=["000001.SZ"], period="tick"))
+    hub.create_persistent_quote_subscription(
+        QuoteSubscriptionSpec(symbols=["000001.SZ"], period="tick")
+    )
 
     with pytest.raises(DataServiceException) as exc:
-        hub.create_persistent_quote_subscription(QuoteSubscriptionSpec(symbols=["600000.SH"], period="tick"))
+        hub.create_persistent_quote_subscription(
+            QuoteSubscriptionSpec(symbols=["600000.SH"], period="tick")
+        )
 
     assert exc.value.error_code == "MAX_SUBSCRIPTIONS_EXCEEDED"
 
@@ -286,7 +392,9 @@ def test_whole_quote_subscription_requires_enable_flag():
     hub = XtDataSubscriptionHub(settings, XtDataGateway(settings))
 
     with pytest.raises(DataServiceException) as exc:
-        hub.create_persistent_whole_quote_subscription(WholeQuoteSubscriptionSpec(markets=["SH", "SZ"]))
+        hub.create_persistent_whole_quote_subscription(
+            WholeQuoteSubscriptionSpec(markets=["SH", "SZ"])
+        )
 
     assert exc.value.error_code == "WHOLE_QUOTE_DISABLED"
 
@@ -300,10 +408,16 @@ def test_failed_native_subscription_rolls_back_record(monkeypatch):
     )
     hub = XtDataSubscriptionHub(settings, XtDataGateway(settings))
 
-    monkeypatch.setattr(hub, "_subscribe_native_quote", lambda record: (_ for _ in ()).throw(DataServiceException("boom", "SUBSCRIPTION_FAILED")))
+    monkeypatch.setattr(
+        hub,
+        "_subscribe_native_quote",
+        lambda record: (_ for _ in ()).throw(DataServiceException("boom", "SUBSCRIPTION_FAILED")),
+    )
 
     with pytest.raises(DataServiceException) as exc:
-        hub.create_persistent_quote_subscription(QuoteSubscriptionSpec(symbols=["000001.SZ"], period="tick"))
+        hub.create_persistent_quote_subscription(
+            QuoteSubscriptionSpec(symbols=["000001.SZ"], period="tick")
+        )
 
     assert exc.value.error_code == "SUBSCRIPTION_FAILED"
     assert hub.list_subscriptions() == []
@@ -329,7 +443,9 @@ def test_subscription_limit_is_atomic_under_concurrency(monkeypatch):
 
     def worker(symbol: str):
         try:
-            hub.create_persistent_quote_subscription(QuoteSubscriptionSpec(symbols=[symbol], period="tick"))
+            hub.create_persistent_quote_subscription(
+                QuoteSubscriptionSpec(symbols=[symbol], period="tick")
+            )
         except DataServiceException as exc:
             errors.append(exc.error_code or "UNKNOWN")
 

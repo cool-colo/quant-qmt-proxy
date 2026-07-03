@@ -79,6 +79,39 @@ def test_grpc_open_session_and_stream_quote():
         reset_services()
 
 
+def test_grpc_stream_quote_l2_periods_emit_correct_payload():
+    reset_services()
+    settings = build_settings()
+    server = create_grpc_server(settings)
+    server.start()
+    port = server._bound_port
+
+    cases = [
+        (common_pb2.QUOTE_PERIOD_L2TRANSACTION, "l2transaction"),
+        (common_pb2.QUOTE_PERIOD_L2ORDER, "l2order"),
+        (common_pb2.QUOTE_PERIOD_L2QUOTE, "l2quote"),
+    ]
+    try:
+        channel = grpc.insecure_channel(f"127.0.0.1:{port}")
+        data_stub = data_pb2_grpc.DataServiceStub(channel)
+
+        for period_enum, payload_field in cases:
+            stream = data_stub.StreamQuote(
+                data_pb2.QuoteStreamRequest(
+                    symbols=["000001.SZ"],
+                    period=period_enum,
+                    adjust_type=common_pb2.ADJUST_TYPE_NONE,
+                )
+            )
+            first_event = next(stream)
+            assert first_event.symbol == "000001.SZ"
+            assert first_event.HasField(payload_field)
+            stream.cancel()
+    finally:
+        server.stop(0)
+        reset_services()
+
+
 def test_grpc_stream_trading_events_receives_order_update():
     reset_services()
     settings = build_settings()
@@ -159,4 +192,3 @@ def test_grpc_auth_interceptor_requires_bearer_token():
     finally:
         server.stop(0)
         reset_services()
-

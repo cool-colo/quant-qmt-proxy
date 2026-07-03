@@ -86,6 +86,9 @@ class L2RequestModel(BaseModel):
 
 class QuoteSubscriptionRequestModel(BaseModel):
     symbols: list[str]
+    # K线周期(1m/5m/.../1d)、tick，或 Level2 逐笔/快照周期:
+    # l2transaction(逐笔成交) / l2order(逐笔委托) / l2quote(行情快照)。
+    # tick 与 l2* 为实时流，不支持全量回放(count 需 >= 0)。
     period: str = "tick"
     start_time: str = ""
     adjust_type: str = "none"

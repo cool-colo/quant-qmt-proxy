@@ -183,18 +183,24 @@ class WholeQuoteStreamRequest(_message.Message):
     def __init__(self, markets: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class QuoteEvent(_message.Message):
-    __slots__ = ("symbol", "period", "event_time_ms", "tick", "kline")
+    __slots__ = ("symbol", "period", "event_time_ms", "tick", "kline", "l2transaction", "l2order", "l2quote")
     SYMBOL_FIELD_NUMBER: _ClassVar[int]
     PERIOD_FIELD_NUMBER: _ClassVar[int]
     EVENT_TIME_MS_FIELD_NUMBER: _ClassVar[int]
     TICK_FIELD_NUMBER: _ClassVar[int]
     KLINE_FIELD_NUMBER: _ClassVar[int]
+    L2TRANSACTION_FIELD_NUMBER: _ClassVar[int]
+    L2ORDER_FIELD_NUMBER: _ClassVar[int]
+    L2QUOTE_FIELD_NUMBER: _ClassVar[int]
     symbol: str
     period: str
     event_time_ms: int
     tick: TickRecord
     kline: KlineBar
-    def __init__(self, symbol: _Optional[str] = ..., period: _Optional[str] = ..., event_time_ms: _Optional[int] = ..., tick: _Optional[_Union[TickRecord, _Mapping]] = ..., kline: _Optional[_Union[KlineBar, _Mapping]] = ...) -> None: ...
+    l2transaction: L2TransactionRecord
+    l2order: L2OrderRecord
+    l2quote: TickRecord
+    def __init__(self, symbol: _Optional[str] = ..., period: _Optional[str] = ..., event_time_ms: _Optional[int] = ..., tick: _Optional[_Union[TickRecord, _Mapping]] = ..., kline: _Optional[_Union[KlineBar, _Mapping]] = ..., l2transaction: _Optional[_Union[L2TransactionRecord, _Mapping]] = ..., l2order: _Optional[_Union[L2OrderRecord, _Mapping]] = ..., l2quote: _Optional[_Union[TickRecord, _Mapping]] = ...) -> None: ...
 
 class FinancialDataRequest(_message.Message):
     __slots__ = ("symbols", "table_names", "start_time", "end_time")

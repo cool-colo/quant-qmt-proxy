@@ -22,6 +22,9 @@ class QuotePeriod(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     QUOTE_PERIOD_1Q: _ClassVar[QuotePeriod]
     QUOTE_PERIOD_1HY: _ClassVar[QuotePeriod]
     QUOTE_PERIOD_1Y: _ClassVar[QuotePeriod]
+    QUOTE_PERIOD_L2TRANSACTION: _ClassVar[QuotePeriod]
+    QUOTE_PERIOD_L2ORDER: _ClassVar[QuotePeriod]
+    QUOTE_PERIOD_L2QUOTE: _ClassVar[QuotePeriod]
 
 class AdjustType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -87,6 +90,9 @@ QUOTE_PERIOD_1MON: QuotePeriod
 QUOTE_PERIOD_1Q: QuotePeriod
 QUOTE_PERIOD_1HY: QuotePeriod
 QUOTE_PERIOD_1Y: QuotePeriod
+QUOTE_PERIOD_L2TRANSACTION: QuotePeriod
+QUOTE_PERIOD_L2ORDER: QuotePeriod
+QUOTE_PERIOD_L2QUOTE: QuotePeriod
 ADJUST_TYPE_UNSPECIFIED: AdjustType
 ADJUST_TYPE_NONE: AdjustType
 ADJUST_TYPE_FRONT: AdjustType

@@ -112,6 +112,9 @@ message QuoteEvent {
   oneof payload {
     TickRecord tick = 4;
     KlineBar kline = 5;
+    L2TransactionRecord l2transaction = 6;
+    L2OrderRecord l2order = 7;
+    TickRecord l2quote = 8;
   }
 }
 

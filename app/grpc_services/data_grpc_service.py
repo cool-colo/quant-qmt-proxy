@@ -4,12 +4,19 @@ import grpc
 
 from google.protobuf import empty_pb2
 
-from app.services.contracts import FinancialDataQuery, KlineHistoryQuery, L2Query, QuoteSubscriptionSpec, TickHistoryQuery, TradingCalendarQuery, WholeQuoteSubscriptionSpec
+from app.services.contracts import (
+    FinancialDataQuery,
+    KlineHistoryQuery,
+    L2Query,
+    QuoteSubscriptionSpec,
+    TickHistoryQuery,
+    TradingCalendarQuery,
+    WholeQuoteSubscriptionSpec,
+)
 from app.services.market_data_service import MarketDataService
 from app.services.reference_data_service import ReferenceDataService
 from app.utils.exceptions import DataServiceException
 from generated import common_pb2, data_pb2, data_pb2_grpc
-
 
 PERIOD_FROM_PROTO = {
     common_pb2.QUOTE_PERIOD_TICK: "tick",
@@ -24,6 +31,9 @@ PERIOD_FROM_PROTO = {
     common_pb2.QUOTE_PERIOD_1Q: "1q",
     common_pb2.QUOTE_PERIOD_1HY: "1hy",
     common_pb2.QUOTE_PERIOD_1Y: "1y",
+    common_pb2.QUOTE_PERIOD_L2TRANSACTION: "l2transaction",
+    common_pb2.QUOTE_PERIOD_L2ORDER: "l2order",
+    common_pb2.QUOTE_PERIOD_L2QUOTE: "l2quote",
 }
 
 ADJUST_FROM_PROTO = {
@@ -37,7 +47,9 @@ ADJUST_FROM_PROTO = {
 
 
 class DataGrpcService(data_pb2_grpc.DataServiceServicer):
-    def __init__(self, market_data_service: MarketDataService, reference_data_service: ReferenceDataService):
+    def __init__(
+        self, market_data_service: MarketDataService, reference_data_service: ReferenceDataService
+    ):
         self.market_data_service = market_data_service
         self.reference_data_service = reference_data_service
 
@@ -59,7 +71,12 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.KlineHistoryResponse)
+            return self._error_response(
+                context,
+                self._grpc_status_for_error(exc),
+                exc.message,
+                data_pb2.KlineHistoryResponse,
+            )
 
     def GetTickHistory(self, request, context):
         try:
@@ -77,20 +94,29 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.TickHistoryResponse)
+            return self._error_response(
+                context, self._grpc_status_for_error(exc), exc.message, data_pb2.TickHistoryResponse
+            )
 
     def GetFullTickSnapshot(self, request, context):
         try:
             snapshots = self.market_data_service.get_full_tick_snapshot(list(request.symbols))
             return data_pb2.FullTickSnapshotResponse(
                 snapshots=[
-                    data_pb2.FullTickSnapshot(symbol=item["symbol"], tick=self._to_tick_record(item["tick"]))
+                    data_pb2.FullTickSnapshot(
+                        symbol=item["symbol"], tick=self._to_tick_record(item["tick"])
+                    )
                     for item in snapshots
                 ],
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.FullTickSnapshotResponse)
+            return self._error_response(
+                context,
+                self._grpc_status_for_error(exc),
+                exc.message,
+                data_pb2.FullTickSnapshotResponse,
+            )
 
     def GetFinancialData(self, request, context):
         try:
@@ -115,22 +141,36 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.FinancialDataResponse)
+            return self._error_response(
+                context,
+                self._grpc_status_for_error(exc),
+                exc.message,
+                data_pb2.FinancialDataResponse,
+            )
 
     def GetInstrumentDetail(self, request, context):
         try:
-            detail = self.reference_data_service.get_instrument_detail(request.symbol, complete=request.complete)
+            detail = self.reference_data_service.get_instrument_detail(
+                request.symbol, complete=request.complete
+            )
             return data_pb2.InstrumentDetailResponse(
                 detail=data_pb2.InstrumentDetail(symbol=detail["symbol"], fields=detail["fields"]),
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.InstrumentDetailResponse)
+            return self._error_response(
+                context,
+                self._grpc_status_for_error(exc),
+                exc.message,
+                data_pb2.InstrumentDetailResponse,
+            )
 
     def GetTradingCalendar(self, request, context):
         try:
             calendar = self.reference_data_service.get_trading_calendar(
-                TradingCalendarQuery(market=request.market, start_time=request.start_time, end_time=request.end_time)
+                TradingCalendarQuery(
+                    market=request.market, start_time=request.start_time, end_time=request.end_time
+                )
             )
             return data_pb2.TradingCalendarResponse(
                 market=calendar["market"],
@@ -138,7 +178,12 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.TradingCalendarResponse)
+            return self._error_response(
+                context,
+                self._grpc_status_for_error(exc),
+                exc.message,
+                data_pb2.TradingCalendarResponse,
+            )
 
     def GetIndexWeight(self, request, context):
         try:
@@ -152,31 +197,49 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.IndexWeightResponse)
+            return self._error_response(
+                context, self._grpc_status_for_error(exc), exc.message, data_pb2.IndexWeightResponse
+            )
 
     def GetSectorList(self, request: empty_pb2.Empty, context):
         try:
             sectors = self.reference_data_service.get_sector_list()
             return data_pb2.SectorListResponse(
-                sectors=[data_pb2.SectorInfo(sector_name=item["sector_name"], symbols=item["symbols"]) for item in sectors],
+                sectors=[
+                    data_pb2.SectorInfo(sector_name=item["sector_name"], symbols=item["symbols"])
+                    for item in sectors
+                ],
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.SectorListResponse)
+            return self._error_response(
+                context, self._grpc_status_for_error(exc), exc.message, data_pb2.SectorListResponse
+            )
 
     def GetL2Quote(self, request, context):
         try:
-            items = self.market_data_service.get_l2_quote(L2Query(list(request.symbols), request.start_time, request.end_time))
+            items = self.market_data_service.get_l2_quote(
+                L2Query(list(request.symbols), request.start_time, request.end_time)
+            )
             return data_pb2.L2QuoteResponse(
-                items=[data_pb2.L2Quote(symbol=item["symbol"], quote=self._to_tick_record(item["quote"])) for item in items],
+                items=[
+                    data_pb2.L2Quote(
+                        symbol=item["symbol"], quote=self._to_tick_record(item["quote"])
+                    )
+                    for item in items
+                ],
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.L2QuoteResponse)
+            return self._error_response(
+                context, self._grpc_status_for_error(exc), exc.message, data_pb2.L2QuoteResponse
+            )
 
     def GetL2Order(self, request, context):
         try:
-            items = self.market_data_service.get_l2_order(L2Query(list(request.symbols), request.start_time, request.end_time))
+            items = self.market_data_service.get_l2_order(
+                L2Query(list(request.symbols), request.start_time, request.end_time)
+            )
             return data_pb2.L2OrderResponse(
                 items=[
                     data_pb2.L2OrderSeries(
@@ -188,23 +251,34 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.L2OrderResponse)
+            return self._error_response(
+                context, self._grpc_status_for_error(exc), exc.message, data_pb2.L2OrderResponse
+            )
 
     def GetL2Transaction(self, request, context):
         try:
-            items = self.market_data_service.get_l2_transaction(L2Query(list(request.symbols), request.start_time, request.end_time))
+            items = self.market_data_service.get_l2_transaction(
+                L2Query(list(request.symbols), request.start_time, request.end_time)
+            )
             return data_pb2.L2TransactionResponse(
                 items=[
                     data_pb2.L2TransactionSeries(
                         symbol=item["symbol"],
-                        transactions=[self._to_l2_transaction_record(tx) for tx in item["transactions"]],
+                        transactions=[
+                            self._to_l2_transaction_record(tx) for tx in item["transactions"]
+                        ],
                     )
                     for item in items
                 ],
                 status=self._status(),
             )
         except DataServiceException as exc:
-            return self._error_response(context, self._grpc_status_for_error(exc), exc.message, data_pb2.L2TransactionResponse)
+            return self._error_response(
+                context,
+                self._grpc_status_for_error(exc),
+                exc.message,
+                data_pb2.L2TransactionResponse,
+            )
 
     def StreamQuote(self, request, context):
         try:
@@ -310,18 +384,25 @@ class DataGrpcService(data_pb2_grpc.DataServiceServicer):
         )
 
     def _to_quote_event(self, event: dict):
-        if event["payload_type"] == "tick":
+        payload_type = event["payload_type"]
+        base = {
+            "symbol": event["symbol"],
+            "period": event["period"],
+            "event_time_ms": event["event_time_ms"],
+        }
+        if payload_type == "tick":
+            return data_pb2.QuoteEvent(**base, tick=self._to_tick_record(event["data"]))
+        if payload_type == "l2quote":
+            return data_pb2.QuoteEvent(**base, l2quote=self._to_tick_record(event["data"]))
+        if payload_type == "l2transaction":
             return data_pb2.QuoteEvent(
-                symbol=event["symbol"],
-                period=event["period"],
-                event_time_ms=event["event_time_ms"],
-                tick=self._to_tick_record(event["data"]),
+                **base, l2transaction=self._to_l2_transaction_record(event["data"])
             )
+        if payload_type == "l2order":
+            return data_pb2.QuoteEvent(**base, l2order=self._to_l2_order_record(event["data"]))
         data = event["data"]
         return data_pb2.QuoteEvent(
-            symbol=event["symbol"],
-            period=event["period"],
-            event_time_ms=event["event_time_ms"],
+            **base,
             kline=data_pb2.KlineBar(
                 time_ms=data.get("time_ms", 0),
                 open=data.get("open", 0.0),

@@ -5,8 +5,10 @@ import queue
 import threading
 import time
 import uuid
+
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Callable, Iterator
+from typing import Any
 
 from app.config import Settings, XTQuantMode
 from app.services.contracts import QuoteSubscriptionSpec, WholeQuoteSubscriptionSpec
@@ -18,6 +20,17 @@ try:
     import xtquant.xtdata as xtdata
 except ImportError:
     xtdata = None
+
+
+# Level2 periods carried by subscribe_quote2. Their callback payloads are
+# {symbol: [ {record}, ... ]} of native xtquant fields, so they are normalized with the
+# gateway's L2 normalizers rather than the kline path.
+L2_TRANSACTION_PERIOD = "l2transaction"
+L2_ORDER_PERIOD = "l2order"
+L2_QUOTE_PERIOD = "l2quote"
+L2_PERIODS = frozenset({L2_TRANSACTION_PERIOD, L2_ORDER_PERIOD, L2_QUOTE_PERIOD})
+# Periods that stream live and cannot replay full history (count < 0 is rejected).
+NON_REPLAYABLE_PERIODS = frozenset({"tick"}) | L2_PERIODS
 
 
 @dataclass
@@ -180,10 +193,12 @@ class XtDataSubscriptionHub:
         if not spec.symbols:
             raise DataServiceException("symbols must not be empty", error_code="EMPTY_SYMBOLS")
         if spec.count < -1:
-            raise DataServiceException("subscription count must be -1 or greater", error_code="INVALID_SUBSCRIPTION_COUNT")
-        if spec.period == "tick" and spec.count < 0:
             raise DataServiceException(
-                "tick subscriptions do not allow full-history replay; use count >= 0",
+                "subscription count must be -1 or greater", error_code="INVALID_SUBSCRIPTION_COUNT"
+            )
+        if spec.period in NON_REPLAYABLE_PERIODS and spec.count < 0:
+            raise DataServiceException(
+                f"{spec.period} subscriptions do not allow full-history replay; use count >= 0",
                 error_code="INVALID_SUBSCRIPTION_COUNT",
             )
         subscription_id = f"quote_{uuid.uuid4().hex[:16]}"
@@ -213,9 +228,14 @@ class XtDataSubscriptionHub:
         )
         return subscription_id
 
-    def _create_whole_quote_subscription(self, spec: WholeQuoteSubscriptionSpec, persistent: bool) -> str:
+    def _create_whole_quote_subscription(
+        self, spec: WholeQuoteSubscriptionSpec, persistent: bool
+    ) -> str:
         if not self.settings.xtquant.data.whole_quote_enabled:
-            raise DataServiceException("whole quote subscriptions are disabled by configuration", error_code="WHOLE_QUOTE_DISABLED")
+            raise DataServiceException(
+                "whole quote subscriptions are disabled by configuration",
+                error_code="WHOLE_QUOTE_DISABLED",
+            )
         if self.settings.xtquant.mode == XTQuantMode.MOCK and not persistent:
             logger.info("mock mode whole quote stream enabled for local validation")
         subscription_id = f"whole_{uuid.uuid4().hex[:16]}"
@@ -257,7 +277,9 @@ class XtDataSubscriptionHub:
         if self.settings.xtquant.mode == XTQuantMode.MOCK:
             return
         if not XTQUANT_DATA_AVAILABLE:
-            raise DataServiceException("xtquant.xtdata is unavailable", error_code="XTDATA_UNAVAILABLE")
+            raise DataServiceException(
+                "xtquant.xtdata is unavailable", error_code="XTDATA_UNAVAILABLE"
+            )
         self._start_runtime_if_needed()
 
         def callback(payload: dict[str, Any]) -> None:
@@ -277,7 +299,9 @@ class XtDataSubscriptionHub:
                     callback=callback,
                 )
                 if subid < 0:
-                    raise DataServiceException("xtdata quote subscription failed", error_code="SUBSCRIPTION_FAILED")
+                    raise DataServiceException(
+                        "xtdata quote subscription failed", error_code="SUBSCRIPTION_FAILED"
+                    )
                 native_subids.append(subid)
             record.native_subids = native_subids
             logger.info(
@@ -291,7 +315,9 @@ class XtDataSubscriptionHub:
         if self.settings.xtquant.mode == XTQuantMode.MOCK:
             return
         if not XTQUANT_DATA_AVAILABLE:
-            raise DataServiceException("xtquant.xtdata is unavailable", error_code="XTDATA_UNAVAILABLE")
+            raise DataServiceException(
+                "xtquant.xtdata is unavailable", error_code="XTDATA_UNAVAILABLE"
+            )
         self._start_runtime_if_needed()
 
         def callback(payload: dict[str, Any]) -> None:
@@ -300,7 +326,9 @@ class XtDataSubscriptionHub:
 
         subid = xtdata.subscribe_whole_quote(record.markets or ["SH", "SZ"], callback=callback)
         if subid < 0:
-            raise DataServiceException("xtdata whole-quote subscription failed", error_code="SUBSCRIPTION_FAILED")
+            raise DataServiceException(
+                "xtdata whole-quote subscription failed", error_code="SUBSCRIPTION_FAILED"
+            )
         record.native_subids = [subid]
         logger.info(
             f"native whole-quote subscription ready: id={record.subscription_id}, subids={record.native_subids}"
@@ -386,6 +414,31 @@ class XtDataSubscriptionHub:
                 "payload_type": "tick",
                 "data": self.gateway._normalize_tick_payload(payload),
             }
+        if period == L2_QUOTE_PERIOD:
+            # Level2 snapshot shares the tick (quote) schema.
+            return {
+                "symbol": symbol,
+                "period": period,
+                "event_time_ms": event_time_ms,
+                "payload_type": L2_QUOTE_PERIOD,
+                "data": self.gateway._normalize_tick_payload(payload),
+            }
+        if period == L2_TRANSACTION_PERIOD:
+            return {
+                "symbol": symbol,
+                "period": period,
+                "event_time_ms": event_time_ms,
+                "payload_type": L2_TRANSACTION_PERIOD,
+                "data": self.gateway._normalize_l2_transaction(payload),
+            }
+        if period == L2_ORDER_PERIOD:
+            return {
+                "symbol": symbol,
+                "period": period,
+                "event_time_ms": event_time_ms,
+                "payload_type": L2_ORDER_PERIOD,
+                "data": self.gateway._normalize_l2_order(payload),
+            }
 
         bar_time_ms = event_time_ms
         bar: dict[str, Any] = {}
@@ -452,6 +505,30 @@ class XtDataSubscriptionHub:
                 "event_time_ms": now_ms,
                 "payload_type": "tick",
                 "data": self.gateway._mock_tick_payload(symbol),
+            }
+        if record.period == L2_QUOTE_PERIOD:
+            return {
+                "symbol": symbol,
+                "period": record.period,
+                "event_time_ms": now_ms,
+                "payload_type": L2_QUOTE_PERIOD,
+                "data": self.gateway._mock_tick_payload(symbol),
+            }
+        if record.period == L2_TRANSACTION_PERIOD:
+            return {
+                "symbol": symbol,
+                "period": record.period,
+                "event_time_ms": now_ms,
+                "payload_type": L2_TRANSACTION_PERIOD,
+                "data": self.gateway._mock_l2_transaction(),
+            }
+        if record.period == L2_ORDER_PERIOD:
+            return {
+                "symbol": symbol,
+                "period": record.period,
+                "event_time_ms": now_ms,
+                "payload_type": L2_ORDER_PERIOD,
+                "data": self.gateway._mock_l2_order(),
             }
         return {
             "symbol": symbol,
