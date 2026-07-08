@@ -64,6 +64,7 @@ class OrderLifecycleStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     ORDER_LIFECYCLE_STATUS_CANCELED: _ClassVar[OrderLifecycleStatus]
     ORDER_LIFECYCLE_STATUS_REJECTED: _ClassVar[OrderLifecycleStatus]
     ORDER_LIFECYCLE_STATUS_EXPIRED: _ClassVar[OrderLifecycleStatus]
+    ORDER_LIFECYCLE_STATUS_PENDING_CANCEL: _ClassVar[OrderLifecycleStatus]
 
 class StockPriceType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -120,6 +121,7 @@ ORDER_LIFECYCLE_STATUS_FILLED: OrderLifecycleStatus
 ORDER_LIFECYCLE_STATUS_CANCELED: OrderLifecycleStatus
 ORDER_LIFECYCLE_STATUS_REJECTED: OrderLifecycleStatus
 ORDER_LIFECYCLE_STATUS_EXPIRED: OrderLifecycleStatus
+ORDER_LIFECYCLE_STATUS_PENDING_CANCEL: OrderLifecycleStatus
 STOCK_PRICE_TYPE_UNSPECIFIED: StockPriceType
 STOCK_PRICE_TYPE_LATEST_PRICE: StockPriceType
 STOCK_PRICE_TYPE_FIX_PRICE: StockPriceType

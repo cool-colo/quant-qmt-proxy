@@ -41,8 +41,8 @@ def _build_order_status_lifecycle_map() -> dict[int, str]:
         code("ORDER_UNREPORTED", 48): "SUBMITTED",       # 未报
         code("ORDER_WAIT_REPORTING", 49): "SUBMITTED",   # 待报
         code("ORDER_REPORTED", 50): "ACCEPTED",          # 已报
-        code("ORDER_REPORTED_CANCEL", 51): "ACCEPTED",   # 已报待撤 (still live at venue)
-        code("ORDER_PARTSUCC_CANCEL", 52): "PARTIALLY_FILLED", # 部成待撤
+        code("ORDER_REPORTED_CANCEL", 51): "PENDING_CANCEL", # 已报待撤
+        code("ORDER_PARTSUCC_CANCEL", 52): "PENDING_CANCEL", # 部成待撤
         code("ORDER_PART_CANCEL", 53): "CANCELED",       # 部撤 (terminal)
         code("ORDER_CANCELED", 54): "CANCELED",          # 已撤 (terminal)
         code("ORDER_PART_SUCC", 55): "PARTIALLY_FILLED", # 部成
@@ -349,9 +349,9 @@ class TradingSessionManager:
             with self._lock:
                 order = session.orders.get(command.order_id)
                 if order:
-                    order["order_status_code"] = 54
-                    order["status_msg"] = "cancelled"
-                    order["lifecycle_status"] = "CANCELED"
+                    order["order_status_code"] = 51
+                    order["status_msg"] = "pending_cancel"
+                    order["lifecycle_status"] = "PENDING_CANCEL"
                     self._publish_event(command.session_id, "order_update", order)
         logger.info(
             f"cancel order result: session_id={command.session_id}, account_id={session.account_id}, success={success}, order_id={command.order_id or ''}, order_sysid={command.order_sysid or ''}"

@@ -25,6 +25,7 @@ def test_proto_enum_values_match_xtquant_contract():
     assert common_pb2.STOCK_PRICE_TYPE_FIX_PRICE == 11
     assert common_pb2.STOCK_PRICE_TYPE_LATEST_PRICE == 5
     assert common_pb2.STOCK_PRICE_TYPE_MARKET_SZ_FULL_OR_CANCEL == 48
+    assert common_pb2.ORDER_LIFECYCLE_STATUS_PENDING_CANCEL == 8
 
 
 def test_grpc_open_session_and_stream_quote():

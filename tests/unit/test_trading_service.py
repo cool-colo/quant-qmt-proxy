@@ -274,6 +274,66 @@ def test_prod_real_account_can_submit_when_prod_orders_enabled(monkeypatch):
     assert gateway.order_calls[0]["stock_code"] == "000001.SZ"
 
 
+def test_cancel_order_ack_marks_real_order_pending_cancel(monkeypatch):
+    monkeypatch.setattr(manager_module, "XTTraderGateway", FakeGateway)
+    monkeypatch.setattr(manager_module, "XTQUANT_TRADER_AVAILABLE", True)
+
+    manager = TradingSessionManager(build_settings("dev", accounts=[simulated_account()]), TradingEventHub())
+    session = manager.open_session(OpenSessionCommand(account_id="SIM-001"))
+    order = manager.submit_stock_order(
+        SubmitStockOrderCommand(
+            session_id=session["session_id"],
+            stock_code="000001.SZ",
+            side=23,
+            price_type=11,
+            volume=100,
+            price=12.34,
+        )
+    )
+
+    assert manager.cancel_stock_order(
+        CancelStockOrderCommand(session_id=session["session_id"], order_id=order["order_id"])
+    ) is True
+
+    stored_order = manager._sessions[session["session_id"]].orders[order["order_id"]]
+    assert stored_order["order_status_code"] == 51
+    assert stored_order["lifecycle_status"] == "PENDING_CANCEL"
+
+
+@pytest.mark.parametrize("order_status", [51, 52])
+def test_qmt_pending_cancel_status_maps_to_pending_cancel(order_status):
+    manager = TradingSessionManager(build_settings("mock"), TradingEventHub())
+    raw_order = type(
+        "RawOrder",
+        (),
+        {
+            "account_id": "SIM-001",
+            "stock_code": "000001.SZ",
+            "instrument_name": "PingAn",
+            "order_id": "7788",
+            "order_sysid": "",
+            "order_time": "20260708093000",
+            "order_type": 24,
+            "order_volume": 100,
+            "price_type": 11,
+            "price": 12.34,
+            "traded_volume": 0,
+            "traded_price": 0.0,
+            "order_status": order_status,
+            "status_msg": "",
+            "strategy_name": "",
+            "order_remark": "NT:O-1",
+            "direction": "",
+            "offset_flag": "",
+            "secu_account": "SIM-001",
+        },
+    )()
+
+    order = manager._convert_order(raw_order)
+
+    assert order["lifecycle_status"] == "PENDING_CANCEL"
+
+
 def test_cancel_by_sysid_normalizes_market_to_xt_enum(monkeypatch):
     monkeypatch.setattr(manager_module, "XTTraderGateway", FakeGateway)
     monkeypatch.setattr(manager_module, "XTQUANT_TRADER_AVAILABLE", True)
