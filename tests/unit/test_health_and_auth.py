@@ -5,10 +5,13 @@ import pytest
 
 from app.grpc_services.data_grpc_service import DataGrpcService
 from app.grpc_services.trading_grpc_service import TradingGrpcService
-from app.utils.exceptions import DataServiceException, TradingServiceException, handle_xtquant_exception
+from app.utils.exceptions import (
+    DataServiceException,
+    TradingServiceException,
+    handle_xtquant_exception,
+)
 from generated import common_pb2, health_pb2, trading_pb2
 from tests.conftest import GrpcTestContext, RestTestContext
-
 
 REST_HEALTH_ENDPOINTS = {"/", "/health/", "/health/ready", "/health/live"}
 GRPC_HEALTH_METHODS = {"Check"}
@@ -20,6 +23,45 @@ def test_rest_health_endpoints(rest_test_context: RestTestContext, path: str):
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["success"] is True
+
+
+def test_rest_ready_reports_deep_components_in_mock(rest_test_context: RestTestContext):
+    response = rest_test_context.client.get("/health/ready")
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["ready"] is True
+    assert data["mode"] == "mock"
+    assert set(data["components"]) == {"xtdata", "xttrader"}
+    assert data["components"]["xtdata"]["ok"] is True
+    assert data["components"]["xttrader"]["ok"] is True
+
+
+def test_rest_ready_returns_503_when_xtdata_not_connected(
+    rest_test_context: RestTestContext, monkeypatch
+):
+    from app.config import get_settings
+    from app.dependencies import get_xtdata_gateway
+
+    gateway = get_xtdata_gateway(get_settings())
+    monkeypatch.setattr(
+        gateway,
+        "health_snapshot",
+        lambda probe=True: {"ok": False, "mode": "dev", "connected": False, "last_error": "boom"},
+    )
+
+    response = rest_test_context.client.get("/health/ready")
+    assert response.status_code == 503, response.text
+    body = response.json()
+    assert body["success"] is False
+    assert body["data"]["ready"] is False
+    assert body["data"]["components"]["xtdata"]["ok"] is False
+
+
+def test_rest_live_is_shallow(rest_test_context: RestTestContext):
+    response = rest_test_context.client.get("/health/live")
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["status"] == "alive"
+
 
 
 @pytest.mark.parametrize(

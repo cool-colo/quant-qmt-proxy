@@ -3,19 +3,24 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Iterator
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.config import AccountKind, Settings, XTQuantMode, XTQuantTradingAccountConfig
-from app.services.contracts import CancelStockOrderCommand, OpenSessionCommand, SubmitStockOrderCommand
+from app.services.contracts import (
+    CancelStockOrderCommand,
+    OpenSessionCommand,
+    SubmitStockOrderCommand,
+)
 from app.services.trading_event_hub import TradingEventHub
 from app.services.xttrader_gateway import XTQUANT_TRADER_AVAILABLE, XTTraderGateway, xtconstant
 from app.utils.exceptions import TradingServiceException
 from app.utils.helpers import validate_stock_code
 from app.utils.logger import logger
-
 
 QMT_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
@@ -374,6 +379,74 @@ class TradingSessionManager:
             session_ids = list(self._sessions.keys())
         for session_id in session_ids:
             self.close_session(session_id)
+
+    def health_snapshot(self, probe: bool = False) -> dict[str, Any]:
+        """Return a non-throwing view of trading readiness for health checks.
+
+        Reports xttrader availability, the count of accounts registered for the
+        current mode, and the number of currently-connected sessions. In mock
+        mode trading is always considered ``ok``.
+
+        When ``probe`` is True in dev/prod, a real xttrader connect is attempted
+        against the first registered account and immediately disconnected. This
+        actually touches the QMT terminal, so callers should opt in explicitly
+        (e.g. a slower/deep health poll) rather than run it on every request.
+        """
+
+        mode = self.settings.xtquant.mode
+        mode_value = mode.value
+
+        if mode == XTQuantMode.MOCK:
+            return {
+                "ok": True,
+                "mode": mode_value,
+                "xtquant_available": True,
+                "registered_accounts": 0,
+                "active_sessions": len(self._sessions),
+                "probe": None,
+                "last_error": None,
+            }
+
+        registered = [
+            profile
+            for profile in self.settings.xtquant.trading.accounts
+            if profile.enabled and mode in profile.allowed_modes
+        ]
+
+        snapshot: dict[str, Any] = {
+            "ok": XTQUANT_TRADER_AVAILABLE and bool(registered),
+            "mode": mode_value,
+            "xtquant_available": XTQUANT_TRADER_AVAILABLE,
+            "registered_accounts": len(registered),
+            "active_sessions": len(self._sessions),
+            "probe": None,
+            "last_error": None,
+        }
+
+        if not XTQUANT_TRADER_AVAILABLE:
+            snapshot["last_error"] = "xtquant.xttrader is unavailable"
+            return snapshot
+        if not registered:
+            snapshot["last_error"] = f"no accounts registered for {mode_value}"
+            return snapshot
+
+        if probe:
+            target = registered[0]
+            try:
+                gateway = self._connect_gateway(
+                    target.account_id, target.account_type, session_id="__health_probe__"
+                )
+                try:
+                    gateway.disconnect()
+                except Exception:
+                    pass
+                snapshot["probe"] = "connected"
+            except Exception as exc:  # pragma: no cover - defensive
+                snapshot["ok"] = False
+                snapshot["probe"] = "failed"
+                snapshot["last_error"] = str(exc)
+
+        return snapshot
 
     def _connect_gateway(self, account_id: str, account_type: str, session_id: str) -> XTTraderGateway:
         if not XTQUANT_TRADER_AVAILABLE or not self.settings.xtquant.data.qmt_userdata_path:

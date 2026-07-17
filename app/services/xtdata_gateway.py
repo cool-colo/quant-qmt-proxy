@@ -3,12 +3,19 @@ from __future__ import annotations
 import os
 import threading
 import time
+
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.config import Settings, XTQuantMode
-from app.services.contracts import FinancialDataQuery, KlineHistoryQuery, L2Query, TickHistoryQuery, TradingCalendarQuery
+from app.services.contracts import (
+    FinancialDataQuery,
+    KlineHistoryQuery,
+    L2Query,
+    TickHistoryQuery,
+    TradingCalendarQuery,
+)
 from app.utils.exceptions import DataServiceException
 from app.utils.helpers import validate_stock_code
 from app.utils.logger import logger
@@ -211,6 +218,35 @@ class XtDataGateway:
                 + reason,
                 error_code="XTDATA_UNAVAILABLE",
             )
+
+    def health_snapshot(self, probe: bool = True) -> dict[str, Any]:
+        """Return a non-throwing view of xtdata connectivity for health checks.
+
+        In mock mode xtdata is intentionally not connected; that still counts as
+        ``ok`` because the fake implementation can serve requests. In dev/prod a
+        disconnected xtdata means the service is not ready to serve market data.
+
+        When ``probe`` is True and not yet connected, a (bounded) reconnect
+        attempt is triggered so a health poll after a restart can drive recovery.
+        """
+
+        mode = self.settings.xtquant.mode.value
+        if self._is_mock_mode():
+            return {"ok": True, "mode": mode, "connected": False, "last_error": None}
+
+        if probe and not self._initialized:
+            try:
+                self._try_initialize()
+            except Exception as exc:  # pragma: no cover - defensive, must never raise
+                logger.warning(f"xtdata health probe failed: {exc}")
+
+        return {
+            "ok": bool(self._initialized),
+            "mode": mode,
+            "connected": bool(self._initialized),
+            "last_error": self._last_connect_error,
+            "xtquant_available": XTQUANT_DATA_AVAILABLE,
+        }
 
     def get_kline_history(self, query: KlineHistoryQuery) -> list[dict[str, Any]]:
         if self._is_mock_mode():

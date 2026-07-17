@@ -8,7 +8,11 @@ from app.models.api_requests import (
     OpenSessionRequestModel,
     SubmitStockOrderRequestModel,
 )
-from app.services.contracts import CancelStockOrderCommand, OpenSessionCommand, SubmitStockOrderCommand
+from app.services.contracts import (
+    CancelStockOrderCommand,
+    OpenSessionCommand,
+    SubmitStockOrderCommand,
+)
 from app.services.trading_session_manager import TradingSessionManager
 from app.utils.exceptions import TradingServiceException, handle_xtquant_exception
 from app.utils.helpers import format_response

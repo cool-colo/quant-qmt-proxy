@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from concurrent import futures
 import time
 import uuid
-from typing import Iterable
+
+from collections.abc import Iterable
+from concurrent import futures
 
 import grpc
 
@@ -12,6 +13,7 @@ from app.dependencies import (
     get_market_data_service,
     get_reference_data_service,
     get_trading_session_manager,
+    get_xtdata_gateway,
 )
 from app.grpc_services.data_grpc_service import DataGrpcService
 from app.grpc_services.health_grpc_service import HealthGrpcService
@@ -109,7 +111,7 @@ class RequestLoggingServerInterceptor(grpc.ServerInterceptor):
                     suffix = "..." if len(values) > 3 else ""
                     details.append(f"{field_name}={preview}{suffix}")
         if hasattr(request, "period"):
-            period = getattr(request, "period")
+            period = request.period
             if period not in ("", None, 0):
                 details.append(f"period={period}")
         if hasattr(request, "WhichOneof"):
@@ -224,13 +226,19 @@ def create_grpc_server(settings: Settings | None = None) -> grpc.Server:
         TradingGrpcService(get_trading_session_manager(settings)),
         server,
     )
-    health_pb2_grpc.add_HealthServicer_to_server(HealthGrpcService(), server)
+    health_pb2_grpc.add_HealthServicer_to_server(
+        HealthGrpcService(
+            xtdata_gateway=get_xtdata_gateway(settings),
+            trading_manager=get_trading_session_manager(settings),
+        ),
+        server,
+    )
 
     server_address = f"{settings.grpc_host}:{settings.grpc_port}"
     bound_port = server.add_insecure_port(server_address)
     if bound_port == 0:
         raise RuntimeError(f"failed to bind gRPC server to {server_address}")
-    setattr(server, "_bound_port", bound_port)
+    server._bound_port = bound_port
     logger.info(f"gRPC server configured on {settings.grpc_host}:{bound_port}")
     return server
 
