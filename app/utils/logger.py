@@ -63,7 +63,7 @@ def configure_logging(
     _ensure_parent_dir(log_file)
     _ensure_parent_dir(error_log_file)
 
-    if console_output:
+    if console_output and sys.stdout is not None:
         _configured_sink_ids.append(
             logger.add(
                 sys.stdout,

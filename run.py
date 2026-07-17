@@ -24,6 +24,7 @@ def run_rest_server(settings: Settings, reload_enabled: bool | None = None) -> N
         log_level=settings.logging.level.lower(),
         access_log=True,
         timeout_keep_alive=settings.uvicorn.timeout_keep_alive,
+        log_config=None,
     )
 
 
@@ -71,4 +72,15 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import traceback
+
+    try:
+        main()
+    except Exception:
+        with open(
+            r"D:\code\quant-qmt-proxy\logs\startup_error.log",
+            "w",
+            encoding="utf-8",
+        ) as f:
+            traceback.print_exc(file=f)
+        raise
