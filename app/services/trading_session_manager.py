@@ -618,13 +618,48 @@ class TradingSessionManager:
         order_volume = int(getattr(order, "order_volume", 0) or 0)
         traded_volume = int(getattr(order, "traded_volume", 0) or 0)
         status_msg = str(getattr(order, "status_msg", ""))
+        raw_order_time = getattr(order, "order_time", None)
+        order_time_ms = self._to_epoch_ms(raw_order_time)
+        lifecycle_status = self._infer_order_lifecycle_status(
+            raw_status_code=raw_status_code,
+            status_msg=status_msg,
+            order_volume=order_volume,
+            traded_volume=traded_volume,
+        )
+        # Diagnostic: the Nautilus adapter derives a DAY-order's trading date from
+        # order_time_ms and may expire an order whose date is in the past. If a live
+        # (non-terminal) order carries an order_time whose date is not today, record
+        # exactly what xtquant handed us (raw type + repr) so we can trace the source
+        # of stale/wrong order_time values instead of guessing.
+        if order_time_ms > 0 and lifecycle_status not in {
+            "FILLED",
+            "CANCELED",
+            "REJECTED",
+            "EXPIRED",
+        }:
+            derived_date = datetime.fromtimestamp(
+                order_time_ms / 1000,
+                tz=QMT_TIMEZONE,
+            ).date()
+            today = datetime.now(tz=QMT_TIMEZONE).date()
+            if derived_date != today:
+                logger.warning(
+                    "xtquant order_time date mismatch for live order: "
+                    f"order_id={getattr(order, 'order_id', '')} "
+                    f"client_order_id={getattr(order, 'client_order_id', '')} "
+                    f"lifecycle_status={lifecycle_status} "
+                    f"raw_order_time_type={type(raw_order_time).__name__} "
+                    f"raw_order_time={raw_order_time!r} "
+                    f"order_time_ms={order_time_ms} derived_date={derived_date} "
+                    f"today={today}",
+                )
         return {
             "account_id": str(getattr(order, "account_id", "")),
             "stock_code": str(getattr(order, "stock_code", "")),
             "instrument_name": str(getattr(order, "instrument_name", "")),
             "order_id": str(getattr(order, "order_id", "")),
             "order_sysid": str(getattr(order, "order_sysid", "")),
-            "order_time_ms": self._to_epoch_ms(getattr(order, "order_time", None)),
+            "order_time_ms": order_time_ms,
             "order_type": int(getattr(order, "order_type", 0) or 0),
             "order_volume": int(getattr(order, "order_volume", 0) or 0),
             "price_type": int(getattr(order, "price_type", 0) or 0),
@@ -640,12 +675,7 @@ class TradingSessionManager:
             "secu_account": str(getattr(order, "secu_account", "")),
             "client_order_id": str(getattr(order, "client_order_id", ""))
             or self._extract_client_order_id(order_remark),
-            "lifecycle_status": self._infer_order_lifecycle_status(
-                raw_status_code=raw_status_code,
-                status_msg=status_msg,
-                order_volume=order_volume,
-                traded_volume=traded_volume,
-            ),
+            "lifecycle_status": lifecycle_status,
         }
 
     def _convert_trade(self, trade: Any) -> dict[str, Any]:
