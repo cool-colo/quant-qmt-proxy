@@ -626,33 +626,34 @@ class TradingSessionManager:
             order_volume=order_volume,
             traded_volume=traded_volume,
         )
-        # Diagnostic: the Nautilus adapter derives a DAY-order's trading date from
-        # order_time_ms and may expire an order whose date is in the past. If a live
-        # (non-terminal) order carries an order_time whose date is not today, record
-        # exactly what xtquant handed us (raw type + repr) so we can trace the source
-        # of stale/wrong order_time values instead of guessing.
-        if order_time_ms > 0 and lifecycle_status not in {
-            "FILLED",
-            "CANCELED",
-            "REJECTED",
-            "EXPIRED",
-        }:
-            derived_date = datetime.fromtimestamp(
-                order_time_ms / 1000,
-                tz=QMT_TIMEZONE,
-            ).date()
-            today = datetime.now(tz=QMT_TIMEZONE).date()
-            if derived_date != today:
-                logger.warning(
-                    "xtquant order_time date mismatch for live order: "
-                    f"order_id={getattr(order, 'order_id', '')} "
-                    f"client_order_id={getattr(order, 'client_order_id', '')} "
-                    f"lifecycle_status={lifecycle_status} "
-                    f"raw_order_time_type={type(raw_order_time).__name__} "
-                    f"raw_order_time={raw_order_time!r} "
-                    f"order_time_ms={order_time_ms} derived_date={derived_date} "
-                    f"today={today}",
-                )
+        # Diagnostic (disabled — root cause confirmed 2026-07-20: xtquant order_time
+        # can carry the prior trading day's date for a live order; see the adapter's
+        # allow_stale_day_expiry fix). Re-enable if the stale-order_time source needs
+        # to be traced again — logs the raw xtquant order_time type + repr when a live
+        # (non-terminal) order's derived date is not today. Kept commented to avoid
+        # per-poll log spam.
+        # if order_time_ms > 0 and lifecycle_status not in {
+        #     "FILLED",
+        #     "CANCELED",
+        #     "REJECTED",
+        #     "EXPIRED",
+        # }:
+        #     derived_date = datetime.fromtimestamp(
+        #         order_time_ms / 1000,
+        #         tz=QMT_TIMEZONE,
+        #     ).date()
+        #     today = datetime.now(tz=QMT_TIMEZONE).date()
+        #     if derived_date != today:
+        #         logger.warning(
+        #             "xtquant order_time date mismatch for live order: "
+        #             f"order_id={getattr(order, 'order_id', '')} "
+        #             f"client_order_id={getattr(order, 'client_order_id', '')} "
+        #             f"lifecycle_status={lifecycle_status} "
+        #             f"raw_order_time_type={type(raw_order_time).__name__} "
+        #             f"raw_order_time={raw_order_time!r} "
+        #             f"order_time_ms={order_time_ms} derived_date={derived_date} "
+        #             f"today={today}",
+        #         )
         return {
             "account_id": str(getattr(order, "account_id", "")),
             "stock_code": str(getattr(order, "stock_code", "")),
