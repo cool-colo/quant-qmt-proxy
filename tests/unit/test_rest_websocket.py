@@ -10,7 +10,7 @@ from app.dependencies import get_ui_subscription_service
 from tests.conftest import RestTestContext
 
 
-WEBSOCKET_TESTED_ENDPOINTS = {"/ws/quote/{subscription_id}"}
+WEBSOCKET_TESTED_ENDPOINTS = {"/ws/quote/{subscription_id}", "/ws/trading/{session_id}"}
 
 
 def _create_subscription(rest_test_context: RestTestContext, path: str, body: dict) -> str:
@@ -19,6 +19,21 @@ def _create_subscription(rest_test_context: RestTestContext, path: str, body: di
     payload = response.json()
     assert payload["success"] is True
     return payload["data"]["subscription_id"]
+
+
+def _open_trading_session(rest_test_context: RestTestContext) -> str:
+    response = rest_test_context.client.post(
+        "/api/v1/trading/sessions",
+        json={
+            "account_id": rest_test_context.runtime.account_id,
+            "account_type": rest_test_context.runtime.account_type,
+        },
+        headers=rest_test_context.headers,
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["success"] is True
+    return payload["data"]["session_id"]
 
 
 def test_rest_and_websocket_quote_subscription_flow(rest_test_context: RestTestContext):
@@ -62,6 +77,40 @@ def test_rest_and_websocket_whole_quote_subscription_flow(rest_test_context: Res
     assert connected["type"] == "connected"
     assert quote["type"] == "quote"
     assert quote["data"]["period"] == "tick"
+
+
+def test_rest_and_websocket_trading_stream_flow(rest_test_context: RestTestContext):
+    if rest_test_context.runtime.is_real:
+        pytest.skip("trading WebSocket order event test submits a mock order only")
+
+    session_id = _open_trading_session(rest_test_context)
+
+    with rest_test_context.client.websocket_connect(
+        f"/ws/trading/{session_id}?token={rest_test_context.runtime.api_key}"
+    ) as websocket:
+        connected = websocket.receive_json()
+        response = rest_test_context.client.post(
+            f"/api/v1/trading/sessions/{session_id}/orders",
+            json={
+                "stock_code": "000001.SZ",
+                "side": "BUY",
+                "price_type": 11,
+                "volume": 100,
+                "price": 10.5,
+                "strategy_name": "pytest",
+                "order_remark": "",
+                "client_order_id": "O-WS-1",
+            },
+            headers=rest_test_context.headers,
+        )
+        message = websocket.receive_json()
+
+    assert response.status_code == 200, response.text
+    assert connected["type"] == "connected"
+    assert connected["session_id"] == session_id
+    assert message["type"] == "trading"
+    assert message["data"]["event_type"] == "order_update"
+    assert message["data"]["payload"]["client_order_id"] == "O-WS-1"
 
 
 def test_websocket_rejects_missing_or_invalid_token(rest_test_context: RestTestContext):

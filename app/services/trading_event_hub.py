@@ -29,7 +29,7 @@ class TradingEventStream(Iterator[dict[str, Any]]):
         return self
 
     def __next__(self) -> dict[str, Any]:
-        while self._stop_checker is None or self._stop_checker():
+        while not self._closed and (self._stop_checker is None or self._stop_checker()):
             try:
                 event = self._consumer_queue.get(timeout=1.0)
                 if event is self._hub.STREAM_CLOSED:
