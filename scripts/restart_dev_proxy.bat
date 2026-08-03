@@ -29,7 +29,7 @@ for /f "tokens=5" %%i in ('netstat -ano ^| findstr :8000') do (
 
 timeout /t 2 /nobreak >nul
 
-
+set "PYTHONPATH=D:\code\xtquant_big_convert\src;%PYTHONPATH%"
 set APP_MODE=dev
 set APP_SERVERS=all
 
