@@ -150,8 +150,20 @@ class XtDataGateway:
 
     def _connect_worker(self) -> None:
         result: dict[str, Any] = {"error": None, "client": None}
+        connect = getattr(xtdata, "connect", None)
+        if not callable(connect):
+            # The native MiniQMT module exposes a socket lifecycle through
+            # ``xtdata.connect()``.  Drop-in adapters (notably
+            # xtquant_big_convert) expose the same data methods but route every
+            # request through their own RPC transport and intentionally do not
+            # implement that lifecycle.  There is no local connection to create
+            # in that case; availability of the remote backend is reported by
+            # the data call that needs it.
+            self._initialized = True
+            self._last_connect_error = None
+            return
         try:
-            result["client"] = xtdata.connect()
+            result["client"] = connect()
         except Exception as exc:
             result["error"] = exc
 

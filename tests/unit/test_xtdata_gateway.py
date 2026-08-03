@@ -5,8 +5,14 @@ import time
 import pytest
 
 import app.services.xtdata_gateway as xtdata_gateway_module
+
 from app.config import Settings
-from app.services.contracts import KlineHistoryQuery, L2Query, TickHistoryQuery, TradingCalendarQuery
+from app.services.contracts import (
+    KlineHistoryQuery,
+    L2Query,
+    TickHistoryQuery,
+    TradingCalendarQuery,
+)
 from app.services.xtdata_gateway import XtDataGateway
 from app.utils.exceptions import DataServiceException
 
@@ -16,7 +22,7 @@ def build_settings(mode: str) -> Settings:
 
 
 @pytest.mark.parametrize(
-    "callable_name, kwargs",
+    ("callable_name", "kwargs"),
     [
         ("get_kline_history", {"query": KlineHistoryQuery(symbols=["000001.SZ"], period="1d")}),
         ("get_tick_history", {"query": TickHistoryQuery(symbols=["000001.SZ"])}),
@@ -79,6 +85,19 @@ def test_real_mode_connect_respects_retry_cooldown(monkeypatch):
         thread = gateway._start_connect_thread_locked()
 
     assert thread is None
+
+
+def test_real_mode_accepts_connectless_xtdata_compat_adapter(monkeypatch):
+    class ConnectlessXtData:
+        pass
+
+    monkeypatch.setattr(xtdata_gateway_module, "XTQUANT_DATA_AVAILABLE", True)
+    monkeypatch.setattr(xtdata_gateway_module, "xtdata", ConnectlessXtData())
+
+    gateway = XtDataGateway(build_settings("dev"))
+
+    assert gateway.health_snapshot(probe=False)["ok"] is True
+    assert gateway.health_snapshot(probe=False)["last_error"] is None
 
 
 class FakeArray:
