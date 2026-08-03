@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import os
 import threading
 import time
@@ -343,8 +344,30 @@ class XtDataGateway:
         if self._is_mock_mode():
             return {"symbol": symbol, "fields": {"InstrumentID": symbol, "InstrumentName": f"Mock {symbol}"}}
         self.ensure_ready()
-        detail = xtdata.get_instrument_detail(symbol, iscomplete=complete) or {}
+        get_detail = xtdata.get_instrument_detail
+        if self._callable_accepts_keyword(get_detail, "iscomplete"):
+            detail = get_detail(symbol, iscomplete=complete) or {}
+        else:
+            # xtquant_big_convert intentionally implements the common
+            # get_instrument_detail(stock_code) signature only.  Its RPC
+            # backend always supplies the available detail fields, so omit the
+            # MiniQMT-specific optional argument.
+            detail = get_detail(symbol) or {}
         return {"symbol": symbol, "fields": {str(k): str(normalize_scalar(v)) for k, v in detail.items()}}
+
+    @staticmethod
+    def _callable_accepts_keyword(callable_obj: Any, keyword: str) -> bool:
+        """Return whether a callable accepts ``keyword``; assume yes when opaque."""
+        try:
+            parameters = inspect.signature(callable_obj).parameters.values()
+        except (TypeError, ValueError):
+            # Some native extension functions do not expose a signature.  Keep
+            # the native xtquant call form in that case.
+            return True
+        return any(
+            parameter.name == keyword or parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
 
     def get_trading_calendar(self, query: TradingCalendarQuery) -> dict[str, Any]:
         if self._is_mock_mode():

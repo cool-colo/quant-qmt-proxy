@@ -100,6 +100,42 @@ def test_real_mode_accepts_connectless_xtdata_compat_adapter(monkeypatch):
     assert gateway.health_snapshot(probe=False)["last_error"] is None
 
 
+def test_instrument_detail_omits_native_only_keyword_for_compat_adapter(monkeypatch):
+    monkeypatch.setattr(XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True))
+    gateway = XtDataGateway(build_settings("dev"))
+
+    class CompatXtData:
+        @staticmethod
+        def get_instrument_detail(stock_code):
+            return {"InstrumentID": stock_code}
+
+    monkeypatch.setattr(xtdata_gateway_module, "xtdata", CompatXtData())
+
+    assert gateway.get_instrument_detail("920238.BJ", complete=True) == {
+        "symbol": "920238.BJ",
+        "fields": {"InstrumentID": "920238.BJ"},
+    }
+
+
+def test_instrument_detail_keeps_native_iscomplete_keyword(monkeypatch):
+    monkeypatch.setattr(XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True))
+    gateway = XtDataGateway(build_settings("dev"))
+    received: dict[str, object] = {}
+
+    class NativeXtData:
+        @staticmethod
+        def get_instrument_detail(stock_code, iscomplete=False):
+            received["stock_code"] = stock_code
+            received["iscomplete"] = iscomplete
+            return {"InstrumentID": stock_code}
+
+    monkeypatch.setattr(xtdata_gateway_module, "xtdata", NativeXtData())
+
+    gateway.get_instrument_detail("920238.BJ", complete=True)
+
+    assert received == {"stock_code": "920238.BJ", "iscomplete": True}
+
+
 class FakeArray:
     def __init__(self, values):
         self._values = values
