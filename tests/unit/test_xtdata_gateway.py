@@ -29,8 +29,12 @@ def build_settings(mode: str) -> Settings:
         ("get_full_tick_snapshot", {"symbols": ["000001.SZ"]}),
     ],
 )
-def test_real_modes_fail_fast_when_xtdata_is_unavailable(monkeypatch, callable_name: str, kwargs: dict[str, object]):
-    monkeypatch.setattr(XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", False))
+def test_real_modes_fail_fast_when_xtdata_is_unavailable(
+    monkeypatch, callable_name: str, kwargs: dict[str, object]
+):
+    monkeypatch.setattr(
+        XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", False)
+    )
 
     gateway = XtDataGateway(build_settings("dev"))
 
@@ -101,7 +105,9 @@ def test_real_mode_accepts_connectless_xtdata_compat_adapter(monkeypatch):
 
 
 def test_instrument_detail_omits_native_only_keyword_for_compat_adapter(monkeypatch):
-    monkeypatch.setattr(XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True))
+    monkeypatch.setattr(
+        XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True)
+    )
     gateway = XtDataGateway(build_settings("dev"))
 
     class CompatXtData:
@@ -118,7 +124,9 @@ def test_instrument_detail_omits_native_only_keyword_for_compat_adapter(monkeypa
 
 
 def test_instrument_detail_keeps_native_iscomplete_keyword(monkeypatch):
-    monkeypatch.setattr(XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True))
+    monkeypatch.setattr(
+        XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True)
+    )
     gateway = XtDataGateway(build_settings("dev"))
     received: dict[str, object] = {}
 
@@ -148,7 +156,9 @@ class FakeArray:
 
 
 def test_l2_helpers_accept_empty_array_payloads(monkeypatch):
-    monkeypatch.setattr(XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True))
+    monkeypatch.setattr(
+        XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True)
+    )
     gateway = XtDataGateway(build_settings("dev"))
 
     class DummyXtData:
@@ -169,13 +179,13 @@ def test_l2_helpers_accept_empty_array_payloads(monkeypatch):
     query = L2Query(symbols=["000001.SZ"], start_time="", end_time="")
     assert gateway.get_l2_quote(query) == []
     assert gateway.get_l2_order(query) == [{"symbol": "000001.SZ", "orders": []}]
-    assert gateway.get_l2_transaction(query) == [
-        {"symbol": "000001.SZ", "transactions": []}
-    ]
+    assert gateway.get_l2_transaction(query) == [{"symbol": "000001.SZ", "transactions": []}]
 
 
 def test_trading_calendar_unsupported_maps_to_feature_not_supported(monkeypatch):
-    monkeypatch.setattr(XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True))
+    monkeypatch.setattr(
+        XtDataGateway, "_try_initialize", lambda self: setattr(self, "_initialized", True)
+    )
     gateway = XtDataGateway(build_settings("dev"))
 
     class DummyXtData:
@@ -186,5 +196,7 @@ def test_trading_calendar_unsupported_maps_to_feature_not_supported(monkeypatch)
     monkeypatch.setattr(xtdata_gateway_module, "xtdata", DummyXtData())
 
     with pytest.raises(DataServiceException) as exc:
-        gateway.get_trading_calendar(TradingCalendarQuery(market="SH", start_time="20240101", end_time="20240131"))
+        gateway.get_trading_calendar(
+            TradingCalendarQuery(market="SH", start_time="20240101", end_time="20240131")
+        )
     assert exc.value.error_code == "FEATURE_NOT_SUPPORTED"

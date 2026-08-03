@@ -153,7 +153,7 @@ class XtDataGateway:
         result: dict[str, Any] = {"error": None, "client": None}
         connect = getattr(xtdata, "connect", None)
         if not callable(connect):
-            # The native MiniQMT module exposes a socket lifecycle through
+            # XTQUANT_BIG_CONVERT_WORKAROUND: the native MiniQMT module exposes a socket lifecycle through
             # ``xtdata.connect()``.  Drop-in adapters (notably
             # xtquant_big_convert) expose the same data methods but route every
             # request through their own RPC transport and intentionally do not
@@ -214,7 +214,9 @@ class XtDataGateway:
         if thread is not None:
             thread.join(timeout=CONNECT_JOIN_TIMEOUT_SECONDS)
             if thread.is_alive():
-                logger.warning("xtdata connect attempt timed out; waiting for current attempt to finish")
+                logger.warning(
+                    "xtdata connect attempt timed out; waiting for current attempt to finish"
+                )
 
     def ensure_ready(self) -> None:
         if self._is_mock_mode():
@@ -295,7 +297,9 @@ class XtDataGateway:
 
     def get_full_tick_snapshot(self, symbols: list[str]) -> list[dict[str, Any]]:
         if self._is_mock_mode():
-            return [{"symbol": symbol, "tick": self._mock_tick_payload(symbol)} for symbol in symbols]
+            return [
+                {"symbol": symbol, "tick": self._mock_tick_payload(symbol)} for symbol in symbols
+            ]
         self.ensure_ready()
         raw = xtdata.get_full_tick(symbols)
         return [
@@ -342,18 +346,24 @@ class XtDataGateway:
 
     def get_instrument_detail(self, symbol: str, complete: bool = False) -> dict[str, Any]:
         if self._is_mock_mode():
-            return {"symbol": symbol, "fields": {"InstrumentID": symbol, "InstrumentName": f"Mock {symbol}"}}
+            return {
+                "symbol": symbol,
+                "fields": {"InstrumentID": symbol, "InstrumentName": f"Mock {symbol}"},
+            }
         self.ensure_ready()
         get_detail = xtdata.get_instrument_detail
         if self._callable_accepts_keyword(get_detail, "iscomplete"):
             detail = get_detail(symbol, iscomplete=complete) or {}
         else:
-            # xtquant_big_convert intentionally implements the common
+            # XTQUANT_BIG_CONVERT_WORKAROUND: xtquant_big_convert intentionally implements the common
             # get_instrument_detail(stock_code) signature only.  Its RPC
             # backend always supplies the available detail fields, so omit the
             # MiniQMT-specific optional argument.
             detail = get_detail(symbol) or {}
-        return {"symbol": symbol, "fields": {str(k): str(normalize_scalar(v)) for k, v in detail.items()}}
+        return {
+            "symbol": symbol,
+            "fields": {str(k): str(normalize_scalar(v)) for k, v in detail.items()},
+        }
 
     @staticmethod
     def _callable_accepts_keyword(callable_obj: Any, keyword: str) -> bool:
@@ -371,10 +381,14 @@ class XtDataGateway:
 
     def get_trading_calendar(self, query: TradingCalendarQuery) -> dict[str, Any]:
         if self._is_mock_mode():
-            base = datetime.strptime(query.start_time or "20250101", "%Y%m%d").replace(tzinfo=QMT_TIMEZONE)
+            base = datetime.strptime(query.start_time or "20250101", "%Y%m%d").replace(
+                tzinfo=QMT_TIMEZONE
+            )
             return {
                 "market": query.market,
-                "dates": [(base + timedelta(days=offset)).strftime("%Y%m%d") for offset in range(5)],
+                "dates": [
+                    (base + timedelta(days=offset)).strftime("%Y%m%d") for offset in range(5)
+                ],
             }
         self.ensure_ready()
         try:
@@ -392,7 +406,10 @@ class XtDataGateway:
         if self._is_mock_mode():
             return {
                 "index_code": index_code,
-                "components": [{"symbol": "000001.SZ", "weight": 0.1}, {"symbol": "600000.SH", "weight": 0.2}],
+                "components": [
+                    {"symbol": "000001.SZ", "weight": 0.1},
+                    {"symbol": "600000.SH", "weight": 0.2},
+                ],
             }
         self.ensure_ready()
         data = xtdata.get_index_weight(index_code) or {}
@@ -413,16 +430,23 @@ class XtDataGateway:
                 symbols = xtdata.get_stock_list_in_sector(sector_name) or []
             except Exception:
                 symbols = []
-            result.append({"sector_name": str(sector_name), "symbols": [str(item) for item in symbols]})
+            result.append(
+                {"sector_name": str(sector_name), "symbols": [str(item) for item in symbols]}
+            )
         return result
 
     def get_l2_quote(self, query: L2Query) -> list[dict[str, Any]]:
         if self._is_mock_mode():
-            return [{"symbol": symbol, "quote": self._mock_tick_payload(symbol)} for symbol in query.symbols]
+            return [
+                {"symbol": symbol, "quote": self._mock_tick_payload(symbol)}
+                for symbol in query.symbols
+            ]
         self.ensure_ready()
         items = []
         for symbol in query.symbols:
-            payload = xtdata.get_l2_quote(stock_code=symbol, start_time=query.start_time, end_time=query.end_time)
+            payload = xtdata.get_l2_quote(
+                stock_code=symbol, start_time=query.start_time, end_time=query.end_time
+            )
             records = normalize_sequence(payload)
             if not records:
                 continue
@@ -432,18 +456,27 @@ class XtDataGateway:
 
     def get_l2_order(self, query: L2Query) -> list[dict[str, Any]]:
         if self._is_mock_mode():
-            return [{"symbol": symbol, "orders": [self._mock_l2_order()]} for symbol in query.symbols]
+            return [
+                {"symbol": symbol, "orders": [self._mock_l2_order()]} for symbol in query.symbols
+            ]
         self.ensure_ready()
         items = []
         for symbol in query.symbols:
-            payload = xtdata.get_l2_order(stock_code=symbol, start_time=query.start_time, end_time=query.end_time)
+            payload = xtdata.get_l2_order(
+                stock_code=symbol, start_time=query.start_time, end_time=query.end_time
+            )
             records = normalize_sequence(payload)
-            items.append({"symbol": symbol, "orders": [self._normalize_l2_order(item) for item in records]})
+            items.append(
+                {"symbol": symbol, "orders": [self._normalize_l2_order(item) for item in records]}
+            )
         return items
 
     def get_l2_transaction(self, query: L2Query) -> list[dict[str, Any]]:
         if self._is_mock_mode():
-            return [{"symbol": symbol, "transactions": [self._mock_l2_transaction()]} for symbol in query.symbols]
+            return [
+                {"symbol": symbol, "transactions": [self._mock_l2_transaction()]}
+                for symbol in query.symbols
+            ]
         self.ensure_ready()
         items = []
         for symbol in query.symbols:
@@ -454,7 +487,10 @@ class XtDataGateway:
             )
             records = normalize_sequence(payload)
             items.append(
-                {"symbol": symbol, "transactions": [self._normalize_l2_transaction(item) for item in records]}
+                {
+                    "symbol": symbol,
+                    "transactions": [self._normalize_l2_transaction(item) for item in records],
+                }
             )
         return items
 
@@ -489,7 +525,9 @@ class XtDataGateway:
                     else:
                         bar[key] = float(normalized or 0.0)
                 bars.append(bar)
-            result.append({"symbol": symbol, "fields": requested_fields or KLINE_FIELDS, "bars": bars})
+            result.append(
+                {"symbol": symbol, "fields": requested_fields or KLINE_FIELDS, "bars": bars}
+            )
         return result
 
     def _format_tick_history(
@@ -510,7 +548,11 @@ class XtDataGateway:
                 available_fields = list(rows.dtype.names)
                 selected = requested_fields or available_fields
                 for row in rows:
-                    item = {field: normalize_scalar(row[field]) for field in selected if field in available_fields}
+                    item = {
+                        field: normalize_scalar(row[field])
+                        for field in selected
+                        if field in available_fields
+                    }
                     ticks.append(self._normalize_tick_payload(item))
             elif hasattr(rows, "to_dict"):
                 for record in rows.to_dict("records"):
@@ -518,7 +560,9 @@ class XtDataGateway:
             elif isinstance(rows, list):
                 for row in rows:
                     ticks.append(self._normalize_tick_payload(row))
-            result.append({"symbol": symbol, "fields": requested_fields or TICK_FIELDS, "ticks": ticks})
+            result.append(
+                {"symbol": symbol, "fields": requested_fields or TICK_FIELDS, "ticks": ticks}
+            )
         return result
 
     def _normalize_tick_payload(self, payload: Any) -> dict[str, Any]:
@@ -533,18 +577,29 @@ class XtDataGateway:
             payload = dict(payload)
         return {
             "time_ms": to_epoch_ms(payload.get("time")),
-            "last_price": float(normalize_scalar(payload.get("lastPrice", payload.get("last_price", 0.0))) or 0.0),
+            "last_price": float(
+                normalize_scalar(payload.get("lastPrice", payload.get("last_price", 0.0))) or 0.0
+            ),
             "open": float(normalize_scalar(payload.get("open", 0.0)) or 0.0),
             "high": float(normalize_scalar(payload.get("high", 0.0)) or 0.0),
             "low": float(normalize_scalar(payload.get("low", 0.0)) or 0.0),
-            "last_close": float(normalize_scalar(payload.get("lastClose", payload.get("last_close", 0.0))) or 0.0),
+            "last_close": float(
+                normalize_scalar(payload.get("lastClose", payload.get("last_close", 0.0))) or 0.0
+            ),
             "amount": float(normalize_scalar(payload.get("amount", 0.0)) or 0.0),
             "volume": int(normalize_scalar(payload.get("volume", 0)) or 0),
             "pvolume": int(normalize_scalar(payload.get("pvolume", 0)) or 0),
-            "open_int": int(normalize_scalar(payload.get("openInt", payload.get("open_int", 0))) or 0),
-            "stock_status": int(normalize_scalar(payload.get("stockStatus", payload.get("stock_status", 0))) or 0),
+            "open_int": int(
+                normalize_scalar(payload.get("openInt", payload.get("open_int", 0))) or 0
+            ),
+            "stock_status": int(
+                normalize_scalar(payload.get("stockStatus", payload.get("stock_status", 0))) or 0
+            ),
             "last_settlement_price": float(
-                normalize_scalar(payload.get("lastSettlementPrice", payload.get("last_settlement_price", 0.0))) or 0.0
+                normalize_scalar(
+                    payload.get("lastSettlementPrice", payload.get("last_settlement_price", 0.0))
+                )
+                or 0.0
             ),
             "ask_price": [
                 float(normalize_scalar(item) or 0.0)
@@ -554,10 +609,17 @@ class XtDataGateway:
                 float(normalize_scalar(item) or 0.0)
                 for item in payload.get("bidPrice", payload.get("bid_price", []))
             ],
-            "ask_vol": [int(normalize_scalar(item) or 0) for item in payload.get("askVol", payload.get("ask_vol", []))],
-            "bid_vol": [int(normalize_scalar(item) or 0) for item in payload.get("bidVol", payload.get("bid_vol", []))],
+            "ask_vol": [
+                int(normalize_scalar(item) or 0)
+                for item in payload.get("askVol", payload.get("ask_vol", []))
+            ],
+            "bid_vol": [
+                int(normalize_scalar(item) or 0)
+                for item in payload.get("bidVol", payload.get("bid_vol", []))
+            ],
             "transaction_num": int(
-                normalize_scalar(payload.get("transactionNum", payload.get("transaction_num", 0))) or 0
+                normalize_scalar(payload.get("transactionNum", payload.get("transaction_num", 0)))
+                or 0
             ),
         }
 
@@ -566,10 +628,17 @@ class XtDataGateway:
             "time_ms": to_epoch_ms(payload.get("time")),
             "price": float(normalize_scalar(payload.get("price", 0.0)) or 0.0),
             "volume": int(normalize_scalar(payload.get("volume", 0)) or 0),
-            "entrust_no": int(normalize_scalar(payload.get("entrustNo", payload.get("entrust_no", 0))) or 0),
-            "entrust_type": int(normalize_scalar(payload.get("entrustType", payload.get("entrust_type", 0))) or 0),
+            "entrust_no": int(
+                normalize_scalar(payload.get("entrustNo", payload.get("entrust_no", 0))) or 0
+            ),
+            "entrust_type": int(
+                normalize_scalar(payload.get("entrustType", payload.get("entrust_type", 0))) or 0
+            ),
             "entrust_direction": int(
-                normalize_scalar(payload.get("entrustDirection", payload.get("entrust_direction", 0))) or 0
+                normalize_scalar(
+                    payload.get("entrustDirection", payload.get("entrust_direction", 0))
+                )
+                or 0
             ),
         }
 
@@ -579,19 +648,29 @@ class XtDataGateway:
             "price": float(normalize_scalar(payload.get("price", 0.0)) or 0.0),
             "volume": int(normalize_scalar(payload.get("volume", 0)) or 0),
             "amount": float(normalize_scalar(payload.get("amount", 0.0)) or 0.0),
-            "trade_index": int(normalize_scalar(payload.get("tradeIndex", payload.get("trade_index", 0))) or 0),
+            "trade_index": int(
+                normalize_scalar(payload.get("tradeIndex", payload.get("trade_index", 0))) or 0
+            ),
             "buy_no": int(normalize_scalar(payload.get("buyNo", payload.get("buy_no", 0))) or 0),
             "sell_no": int(normalize_scalar(payload.get("sellNo", payload.get("sell_no", 0))) or 0),
-            "trade_type": int(normalize_scalar(payload.get("tradeType", payload.get("trade_type", 0))) or 0),
-            "trade_flag": int(normalize_scalar(payload.get("tradeFlag", payload.get("trade_flag", 0))) or 0),
+            "trade_type": int(
+                normalize_scalar(payload.get("tradeType", payload.get("trade_type", 0))) or 0
+            ),
+            "trade_flag": int(
+                normalize_scalar(payload.get("tradeFlag", payload.get("trade_flag", 0))) or 0
+            ),
         }
 
     def _mock_kline_history(self, query: KlineHistoryQuery) -> list[dict[str, Any]]:
-        base = datetime.strptime(query.start_time or "20250101", "%Y%m%d").replace(tzinfo=QMT_TIMEZONE)
+        base = datetime.strptime(query.start_time or "20250101", "%Y%m%d").replace(
+            tzinfo=QMT_TIMEZONE
+        )
         items = []
         for symbol in query.symbols:
             if not validate_stock_code(symbol):
-                raise DataServiceException(f"invalid stock code: {symbol}", error_code="INVALID_STOCK_CODE")
+                raise DataServiceException(
+                    f"invalid stock code: {symbol}", error_code="INVALID_STOCK_CODE"
+                )
             bars = []
             for offset in range(5):
                 ts = base + timedelta(days=offset)
@@ -615,7 +694,10 @@ class XtDataGateway:
         return items
 
     def _mock_tick_history(self, symbols: list[str]) -> list[dict[str, Any]]:
-        return [{"symbol": symbol, "fields": TICK_FIELDS, "ticks": [self._mock_tick_payload(symbol)]} for symbol in symbols]
+        return [
+            {"symbol": symbol, "fields": TICK_FIELDS, "ticks": [self._mock_tick_payload(symbol)]}
+            for symbol in symbols
+        ]
 
     def _mock_tick_payload(self, symbol: str) -> dict[str, Any]:
         now_ms = int(time.time() * 1000)

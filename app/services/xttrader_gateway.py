@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable
+
+from collections.abc import Callable
+from typing import Any
 
 from app.utils.logger import logger
 
@@ -98,7 +100,11 @@ class XTTraderGateway:
         self.connected = False
 
     def connect(self) -> None:
-        self.trader = XtQuantTrader(self.qmt_userdata_path, self.session, self.callback)
+        # XTQUANT_BIG_CONVERT_WORKAROUND: its XtQuantTrader replacement treats
+        # the third positional argument as account_id, unlike native xtquant
+        # where it is the callback.  Registering immediately after the
+        # two-argument construction works with both implementations.
+        self.trader = XtQuantTrader(self.qmt_userdata_path, self.session)
         self.trader.register_callback(self.callback)
         self.trader.start()
         logger.info(
